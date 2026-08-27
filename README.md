@@ -23,7 +23,7 @@ No model training is performed as part of this scaffold.
 │   ├── features/engineering.py
 │   ├── models/classifier.py
 │   ├── training/train.py
-│   ├── evaluation/{evaluate.py,robustness_test.py,error_analysis.py,materialize_transforms.py}
+│   ├── evaluation/{evaluate.py,robustness_test.py,error_analysis.py,materialized.py,materialize_transforms.py}
 │   ├── explainability/gradcam.py
 │   ├── inference/predict.py
 │   └── utils/{config.py,checkpoint.py,seed.py}
@@ -31,6 +31,44 @@ No model training is performed as part of this scaffold.
 ├── app.py
 └── tests/test_smoke.py
 ```
+
+## Team split
+
+Your role is detector and robustness-evaluation lead:
+
+- Own `src/models/classifier.py` and `src/training/train.py`.
+- Own clean metrics in `src/evaluation/evaluate.py`.
+- Own clean-versus-transformation comparisons in
+  `src/evaluation/robustness_test.py`.
+- Own `src/evaluation/error_analysis.py`, `src/features/engineering.py`,
+  `src/explainability/gradcam.py`, and `app.py`.
+- Present the baseline-versus-robust-training results, failure cases, and
+  explainability examples.
+
+Your friend owns transformation generation and test-set materialization. The
+reference code in `src/data/augmentations.py` and
+`src/evaluation/materialize_transforms.py` can be replaced or extended by that
+work; the evaluation contract stays stable.
+
+The handoff is a single `manifest.json` containing one entry per source image
+and transformation:
+
+```json
+[
+  {
+    "source_path": "data/raw/validation/example.jpg",
+    "transformed_path": "data/processed/robustness/jpeg_30/example.jpg",
+    "case": "jpeg_30"
+  }
+]
+```
+
+Use these exact case names: `jpeg_90`, `jpeg_70`, `jpeg_50`, `jpeg_30`,
+`blur_0.5`, `blur_1`, `blur_2`, `resize_0.5x`, `resize_0.25x`, `noise_0.02`,
+`noise_0.05`, `noise_0.1`, `color_jitter`, and `center_crop_80`. The manifest
+should cover every image in `data/splits/split.json`'s `validation` list for
+every case. Extra training-set entries are allowed and ignored. Labels are
+always taken from the project split rather than the transformation manifest.
 
 ## Dataset placement
 
@@ -126,6 +164,21 @@ python -m src.evaluation.robustness_test \
   --output outputs/robustness.json
 ```
 
+When your friend has produced the handoff manifest, use it as the primary
+evaluation input:
+
+```bash
+python -m src.evaluation.robustness_test \
+  --config configs/config.yaml \
+  --checkpoint checkpoints/best.pt \
+  --materialized-root data/processed/robustness \
+  --output outputs/robustness_materialized.json
+```
+
+The report records whether it used the materialized manifest or the local
+on-the-fly fallback. This makes your evaluation independent of the
+transformation implementation while keeping a reproducible test artifact.
+
 Create your own viewable transformed test images and a manifest. This keeps a
 materialized copy of each robustness case for presentations, qualitative
 inspection, and repeatable offline tests:
@@ -137,8 +190,10 @@ python -m src.evaluation.materialize_transforms \
   --output-dir data/processed/robustness/real
 ```
 
-The command can be run separately for `data/raw/ai_generated`. Use
-`--cases jpeg_30 noise_0.1 center_crop_80` to materialize only selected cases.
+The command can be run separately for `data/raw/ai_generated`. For the shared
+evaluation handoff, your friend should instead generate one manifest covering
+the validation split's original paths. Use `--cases jpeg_30 noise_0.1
+center_crop_80` to materialize only selected cases during exploration.
 
 Review per-image errors and pixel-derived diagnostic features:
 

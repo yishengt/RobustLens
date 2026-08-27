@@ -1,4 +1,9 @@
-"""Create viewable transformed test images for robustness experiments."""
+"""Reference utility for creating viewable transformed test images.
+
+This is a convenience implementation for the transformation owner. The model
+and evaluation side consumes its output through the manifest contract and does
+not depend on how the transformations are generated.
+"""
 
 from __future__ import annotations
 

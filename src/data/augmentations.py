@@ -1,4 +1,9 @@
-"""Albumentations pipelines for training, validation, and robustness tests."""
+"""Reference Albumentations pipelines for training and fallback robustness tests.
+
+The transformation owner can replace the materialization step with a separate
+implementation as long as it emits the manifest contract consumed by
+``src.evaluation.materialized``.
+"""
 
 from __future__ import annotations
 
