@@ -72,6 +72,9 @@ def predict_directory(
 ) -> List[Dict[str, Any]]:
     """Run batched inference over a directory and optionally write JSON."""
 
+    # -----------------------------------------------------------------------
+    # STEP 1: Find supported image files in the input directory.
+    # -----------------------------------------------------------------------
     directory = Path(image_dir).expanduser()
     configured_extensions = {
         str(extension).lower()
@@ -80,6 +83,10 @@ def predict_directory(
     image_paths = list_image_files(directory, configured_extensions)
     if not image_paths:
         raise FileNotFoundError(f"No supported images found in input directory: {directory}")
+
+    # -----------------------------------------------------------------------
+    # STEP 2: Validate every image before loading the model or starting work.
+    # -----------------------------------------------------------------------
     invalid = []
     for path in image_paths:
         try:
@@ -90,6 +97,9 @@ def predict_directory(
         preview = "\n".join(invalid[:10])
         raise ValueError(f"Input directory contains invalid images:\n{preview}")
 
+    # -----------------------------------------------------------------------
+    # STEP 3: Load the checkpoint, preprocessing transform, and compute device.
+    # -----------------------------------------------------------------------
     model, transform, device, _ = load_detector(config, checkpoint_path)
     loader = DataLoader(
         ImageInferenceDataset(image_paths, transform),
@@ -98,6 +108,10 @@ def predict_directory(
         num_workers=int(config.get("data", {}).get("num_workers", 0)),
         pin_memory=bool(config.get("data", {}).get("pin_memory", True)),
     )
+
+    # -----------------------------------------------------------------------
+    # STEP 4: Preprocess images in batches and calculate AI probabilities.
+    # -----------------------------------------------------------------------
     results: List[Dict[str, Any]] = []
     for images, paths in loader:
         probabilities = torch.sigmoid(model(images.to(device)).reshape(-1)).cpu().tolist()
@@ -106,6 +120,9 @@ def predict_directory(
             for path, probability in zip(paths, probabilities)
         )
 
+    # -----------------------------------------------------------------------
+    # STEP 5: Optionally save the predictions as a JSON file.
+    # -----------------------------------------------------------------------
     if output_path is not None:
         output = Path(output_path).expanduser()
         output.parent.mkdir(parents=True, exist_ok=True)
