@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+checkpoints/*.pt
+checkpoints/*.json
+outputs/*.json
+data/splits/*.json

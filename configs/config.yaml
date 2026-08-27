@@ -1,0 +1,62 @@
+seed: 42
+
+paths:
+  real_dir: data/raw/real
+  ai_dir: data/raw/ai_generated
+  processed_dir: data/processed
+  splits_dir: data/splits
+  split_file: data/splits/split.json
+  robustness_dir: data/processed/robustness
+  checkpoint_dir: checkpoints
+  output_dir: outputs
+
+data:
+  image_size: 224
+  validation_fraction: 0.2
+  num_workers: 0
+  pin_memory: true
+  extensions: [".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"]
+
+training:
+  batch_size: 32
+  epochs: 10
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  threshold: 0.5
+  device: auto
+
+model:
+  name: efficientnet_b0
+  pretrained: false
+  num_classes: 1
+
+normalization:
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+augmentations:
+  train:
+    horizontal_flip_probability: 0.5
+    color_jitter_probability: 0.5
+    color_jitter_limit: 0.2
+    jpeg_probability: 0.2
+    jpeg_qualities: [90, 70, 50, 30]
+    blur_probability: 0.2
+    blur_sigmas: [0.5, 1.0, 2.0]
+    resize_probability: 0.2
+    resize_scales: [0.5, 0.25]
+    noise_probability: 0.2
+    noise_sigmas: [0.02, 0.05, 0.10]
+    center_crop_probability: 0.2
+    center_crop_fraction: 0.8
+  robustness:
+    jpeg_qualities: [90, 70, 50, 30]
+    blur_sigmas: [0.5, 1.0, 2.0]
+    resize_scales: [0.5, 0.25]
+    noise_sigmas: [0.02, 0.05, 0.10]
+    color_jitter_limit: 0.2
+    center_crop_fraction: 0.8
+
+inference:
+  batch_size: 32
+  threshold: 0.5
