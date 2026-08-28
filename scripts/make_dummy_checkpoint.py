@@ -3,10 +3,24 @@
 
 WARNING
 -------
-The checkpoint this writes contains untrained random weights. Its predictions
-are meaningless and must never be presented as detection results. It exists so
-you can exercise the CLI, the Streamlit demo and the tests before a real
-trained checkpoint is available.
+The checkpoint this writes contains untrained weights. Its predictions are
+meaningless and must never be presented as detection results. It exists so you
+can exercise the CLI, the Streamlit demo and the tests before a real trained
+checkpoint is available.
+
+Why the default is ``resnet18``
+-------------------------------
+A randomly initialised EfficientNet-B0 is numerically dead in eval mode: its
+depthwise convolutions and squeeze-excite gates shrink the signal through 16
+layers while untrained BatchNorm running statistics (mean 0, variance 1) never
+renormalise it, so the final feature map collapses to a standard deviation
+around 1e-14 and every image yields the identical logit. That hides real
+pipeline bugs. ResNet-18's residual connections preserve the signal, so its
+random weights still produce input-dependent outputs and genuinely exercise
+preprocessing, transformation and batching code.
+
+Use ``--pretrained-backbone`` for an ImageNet-trained backbone with a random
+head, which varies even more realistically across images.
 
 Usage::
 
@@ -32,17 +46,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", default="checkpoints/dummy.pt")
     parser.add_argument(
         "--architecture",
-        default="efficientnet_b0",
+        default="resnet18",
         choices=["efficientnet_b0", "resnet18", "convnext_tiny"],
+        help="resnet18 stays responsive to its input with random weights",
     )
     parser.add_argument("--num-classes", type=int, default=1, choices=[1, 2])
+    parser.add_argument(
+        "--pretrained-backbone",
+        action="store_true",
+        help="Use ImageNet weights for the backbone with a random head (downloads weights)",
+    )
     args = parser.parse_args(argv)
 
     import torch
 
     from src.pipeline.model_loader import build_architecture, count_parameters
 
-    model = build_architecture(args.architecture, num_classes=args.num_classes, pretrained=False)
+    model = build_architecture(
+        args.architecture, num_classes=args.num_classes, pretrained=args.pretrained_backbone
+    )
+    if args.architecture == "efficientnet_b0" and not args.pretrained_backbone:
+        print(
+            "NOTE: a randomly initialised efficientnet_b0 collapses to a constant "
+            "output in eval mode, so every image scores identically. Use resnet18 "
+            "or --pretrained-backbone if you want input-dependent smoke-test scores.",
+            file=sys.stderr,
+        )
     output = Path(args.output).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -51,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
             "model_name": args.architecture,
             "num_classes": args.num_classes,
             "trained": False,
-            "warning": "Randomly initialised weights. Predictions are meaningless.",
+            "warning": "Untrained weights. Predictions are meaningless.",
         },
         output,
     )
@@ -59,7 +88,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Wrote UNTRAINED checkpoint to {output}")
     print(f"  architecture: {args.architecture}")
     print(f"  parameters:   {count_parameters(model):,}")
-    print("  WARNING: random weights - predictions from this file mean nothing.")
+    print(f"  backbone:     {'ImageNet-pretrained' if args.pretrained_backbone else 'random'}")
+    print("  WARNING: not trained to detect anything - predictions mean nothing.")
     return 0
 
 

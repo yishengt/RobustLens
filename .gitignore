@@ -30,5 +30,11 @@ outputs/*.png
 data/splits/*.json
 data/processed/robustness/
 
+# Downloaded datasets (SID_Set shards are ~495 MB each)
+data/sid_set/
+*.parquet
+.cache/
+.huggingface/
+
 # Streamlit secrets
 .streamlit/secrets.toml

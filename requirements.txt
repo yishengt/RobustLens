@@ -1,8 +1,27 @@
+# Core inference stack (required)
 torch>=2.2
 torchvision>=0.17
-albumentations>=1.4
 Pillow>=10.0
-opencv-python-headless>=4.8
 numpy>=1.24
 PyYAML>=6.0
+
+# Streamlit demo (app.py); pandas backs the charts and tables
 streamlit>=1.32
+pandas>=2.0
+
+# Optional: DCT features in src/pipeline/frequency.py.
+# The frequency module degrades gracefully without it.
+scipy>=1.10
+
+# Optional: dataset benchmarking via scripts/download_dataset.py and
+# scripts/evaluate_dataset.py. pyarrow reads the parquet shards.
+huggingface_hub>=0.23
+pyarrow>=14.0
+
+# Tests
+pytest>=8.0
+
+# Optional legacy helpers: only src/data/augmentations.py, src/inference/predict.py
+# and src/explainability/gradcam.py need these. The src/pipeline/* stack does not.
+# albumentations>=1.4
+# opencv-python-headless>=4.8
