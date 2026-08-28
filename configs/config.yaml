@@ -1,54 +1,116 @@
-seed: 42
+# ---------------------------------------------------------------------------
+# Inference-only configuration for robust AI-generated image detection.
+#
+# Every relative path below is resolved against the project root, which is the
+# parent directory of this configs/ folder. No machine-specific absolute paths
+# are stored here.
+# ---------------------------------------------------------------------------
 
 paths:
-  real_dir: data/raw/real
-  ai_dir: data/raw/ai_generated
-  processed_dir: data/processed
-  splits_dir: data/splits
-  split_file: data/splits/split.json
-  robustness_dir: data/processed/robustness
   checkpoint_dir: checkpoints
   output_dir: outputs
 
 data:
   image_size: 224
-  validation_fraction: 0.2
   num_workers: 0
-  pin_memory: true
-  extensions: [".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"]
+  pin_memory: false
+  extensions: [".jpg", ".jpeg", ".png", ".webp"]
 
-training:
-  batch_size: 32
-  epochs: 10
-  learning_rate: 0.0001
-  weight_decay: 0.0001
-  threshold: 0.5
-  device: auto
+# --- Stage 2: image validation --------------------------------------------
+validation:
+  min_side: 32                 # reject images smaller than this on either side
+  max_side: 20000              # reject absurdly large images
+  max_pixels: 50000000         # decompression-bomb guard (width * height)
+  max_file_size_mb: 64
 
+# --- Stage 5: model loading ------------------------------------------------
 model:
-  name: efficientnet_b0
-  pretrained: false
-  num_classes: 1
+  name: efficientnet_b0        # efficientnet_b0 | resnet18 | convnext_tiny
+  pretrained: false            # inference loads weights from the checkpoint
+  num_classes: 1               # 1 = single logit + sigmoid, 2 = softmax pair
+  ai_class_index: 1            # which column is "AI-generated" when num_classes == 2
+  max_parameters: 2000000000   # hard competition limit: fewer than 2B parameters
 
+# --- Stage 3: preprocessing ------------------------------------------------
 normalization:
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
 
+# --- Stage 4: transformation generation ------------------------------------
+# Each entry is applied to the ORIGINAL image; the transformed result then goes
+# through exactly the same preprocessing and model pipeline as the original.
+transformations:
+  enabled: true
+  seed: 1234                   # makes the stochastic transforms reproducible
+  jpeg_qualities: [90, 70, 50, 30]
+  blur_sigmas: [0.5, 1.0, 2.0]
+  resize_scales: [0.5, 0.25]   # downscale by this factor, then upscale back
+  noise_sigmas: [0.02, 0.05, 0.10]   # fraction of the 0-255 range
+  color_jitter:
+    brightness: 0.2            # +/- 20 %
+    contrast: 0.2
+    saturation: 0.2
+    variants: 1                # how many random jitter draws to generate
+  center_crop_fraction: 0.8    # keep 80 % of the width and 80 % of the height
+
+# --- Stage 6: classification labels ---------------------------------------
+labels:
+  authentic_max: 0.40          # p <  0.40          -> Likely authentic
+  ai_min: 0.60                 # p >= 0.60          -> Likely AI-generated
+                               # in between         -> Uncertain
+
+# --- Stage 7: transformation consistency ----------------------------------
+# consistency = 1 - (std_weight * std/std_reference + range_weight * range/range_reference)
+# clamped to [0, 1]; 1.0 means the prediction barely moved under transformation.
+consistency:
+  std_reference: 0.20
+  range_reference: 0.60
+  std_weight: 0.5
+  range_weight: 0.5
+
+# --- Stage 8: prediction fusion -------------------------------------------
+fusion:
+  mode: rgb_transform          # rgb_transform | frequency
+  original_weight: 0.7
+  transform_weight: 0.3
+  frequency:                   # only used when mode == frequency AND a working
+    rgb_weight: 0.5            # frequency model is available
+    frequency_weight: 0.3
+    consistency_weight: 0.2
+
+# --- Stage 9: optional frequency / noise analysis -------------------------
+# Disabled by default. Enabling this without a trained frequency checkpoint
+# yields descriptive features only; it never invents a probability.
+frequency:
+  enabled: false
+  checkpoint: null
+  fft_bins: 16
+
+# --- Stage 10: confidence scoring -----------------------------------------
+confidence:
+  decisiveness_weight: 0.4     # how far the final probability sits from 0.5
+  agreement_weight: 0.3        # share of versions agreeing with the original
+  consistency_weight: 0.3      # transformation consistency score
+  high_min: 0.70
+  medium_min: 0.45
+
+# --- Stage 11: explainability ---------------------------------------------
+explainability:
+  enabled: true
+  gradcam: true
+  overlay_alpha: 0.45
+
+inference:
+  batch_size: 32
+  threshold: 0.5               # binary decision threshold used for agreement
+  device: auto                 # auto | cpu | cuda | mps
+
+# ---------------------------------------------------------------------------
+# Legacy block: consumed only by the older src/data/augmentations.py helpers
+# that predate src/pipeline/transformations.py. Kept so existing code keeps
+# working; the inference pipeline reads the `transformations` block above.
+# ---------------------------------------------------------------------------
 augmentations:
-  train:
-    horizontal_flip_probability: 0.5
-    color_jitter_probability: 0.5
-    color_jitter_limit: 0.2
-    jpeg_probability: 0.2
-    jpeg_qualities: [90, 70, 50, 30]
-    blur_probability: 0.2
-    blur_sigmas: [0.5, 1.0, 2.0]
-    resize_probability: 0.2
-    resize_scales: [0.5, 0.25]
-    noise_probability: 0.2
-    noise_sigmas: [0.02, 0.05, 0.10]
-    center_crop_probability: 0.2
-    center_crop_fraction: 0.8
   robustness:
     jpeg_qualities: [90, 70, 50, 30]
     blur_sigmas: [0.5, 1.0, 2.0]
@@ -56,7 +118,3 @@ augmentations:
     noise_sigmas: [0.02, 0.05, 0.10]
     color_jitter_limit: 0.2
     center_crop_fraction: 0.8
-
-inference:
-  batch_size: 32
-  threshold: 0.5

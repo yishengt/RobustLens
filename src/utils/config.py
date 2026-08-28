@@ -44,7 +44,7 @@ def get_device(config: Dict[str, Any], requested: str | None = None) -> str:
 
     import torch
 
-    configured = requested or config.get("training", {}).get("device", "auto")
+    configured = requested or config.get("inference", {}).get("device", "auto")
     if configured != "auto":
         return str(configured)
     return "cuda" if torch.cuda.is_available() else "cpu"

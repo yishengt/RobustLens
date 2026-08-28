@@ -1,13 +1,8 @@
-"""Reference Albumentations pipelines for training and fallback robustness tests.
-
-The transformation owner can replace the materialization step with a separate
-implementation as long as it emits the manifest contract consumed by
-``src.evaluation.materialized``.
-"""
+"""Configurable image transformations used by the inference pipeline."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 import albumentations as A
 import cv2
@@ -73,13 +68,6 @@ def _normalization(config: Dict[str, Any]) -> List[A.BasicTransform]:
     ]
 
 
-def _one_of(transforms: Iterable[A.BasicTransform], probability: float) -> A.BasicTransform | None:
-    choices = list(transforms)
-    if not choices or probability <= 0:
-        return None
-    return A.OneOf(choices, p=float(probability))
-
-
 def _final_pipeline(
     config: Dict[str, Any],
     transforms: List[A.BasicTransform],
@@ -96,73 +84,6 @@ def build_eval_transform(config: Dict[str, Any]) -> A.Compose:
     """Build the clean deterministic validation/inference pipeline."""
 
     return _final_pipeline(config, [])
-
-
-def build_train_transform(config: Dict[str, Any]) -> A.Compose:
-    """Build a configurable training pipeline with transformation diversity."""
-
-    settings = config.get("augmentations", {}).get("train", {})
-    transforms: List[A.BasicTransform] = []
-    transforms.append(
-        A.HorizontalFlip(
-            p=float(settings.get("horizontal_flip_probability", 0.5))
-        )
-    )
-
-    jitter_limit = float(settings.get("color_jitter_limit", 0.2))
-    jitter_probability = float(settings.get("color_jitter_probability", 0.5))
-    if jitter_probability > 0:
-        transforms.append(
-            A.ColorJitter(
-                brightness=jitter_limit,
-                contrast=jitter_limit,
-                saturation=jitter_limit,
-                hue=0.0,
-                p=jitter_probability,
-            )
-        )
-
-    jpeg_choices = [
-        _jpeg_transform(int(quality))
-        for quality in settings.get("jpeg_qualities", [90, 70, 50, 30])
-    ]
-    choice = _one_of(jpeg_choices, float(settings.get("jpeg_probability", 0.2)))
-    if choice is not None:
-        transforms.append(choice)
-
-    blur_choices = [_blur_transform(float(sigma)) for sigma in settings.get("blur_sigmas", [0.5, 1.0, 2.0])]
-    choice = _one_of(blur_choices, float(settings.get("blur_probability", 0.2)))
-    if choice is not None:
-        transforms.append(choice)
-
-    resize_choices = [
-        _lambda_image(lambda image, scale=float(scale), **kwargs: _resize_down_up(image, scale, **kwargs))
-        for scale in settings.get("resize_scales", [0.5, 0.25])
-    ]
-    choice = _one_of(resize_choices, float(settings.get("resize_probability", 0.2)))
-    if choice is not None:
-        transforms.append(choice)
-
-    noise_choices = [
-        _lambda_image(lambda image, sigma=float(sigma), **kwargs: _gaussian_noise(image, sigma, **kwargs))
-        for sigma in settings.get("noise_sigmas", [0.02, 0.05, 0.10])
-    ]
-    choice = _one_of(noise_choices, float(settings.get("noise_probability", 0.2)))
-    if choice is not None:
-        transforms.append(choice)
-
-    crop_probability = float(settings.get("center_crop_probability", 0.2))
-    crop_fraction = float(settings.get("center_crop_fraction", 0.8))
-    image_size = int(config.get("data", {}).get("image_size", 224))
-    crop_size = max(1, int(round(image_size * crop_fraction)))
-    if crop_probability > 0:
-        transforms.extend(
-            [
-                A.CenterCrop(height=crop_size, width=crop_size, p=crop_probability),
-                A.Resize(height=image_size, width=image_size, p=1.0),
-            ]
-        )
-    return _final_pipeline(config, transforms)
 
 
 def _robustness_transforms(config: Dict[str, Any], case: str) -> List[A.BasicTransform]:
