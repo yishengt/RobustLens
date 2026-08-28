@@ -8,6 +8,7 @@ PyYAML>=6.0
 # Streamlit demo (app.py); pandas backs the charts and tables
 streamlit>=1.32
 pandas>=2.0
+matplotlib>=3.7
 
 # Optional: DCT features in src/pipeline/frequency.py.
 # The frequency module degrades gracefully without it.

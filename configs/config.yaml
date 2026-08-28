@@ -59,6 +59,15 @@ labels:
   ai_min: 0.60                 # p >= 0.60          -> Likely AI-generated
                                # in between         -> Uncertain
 
+# Set enabled=true after fitting this file with scripts/calibrate_threshold.py.
+# Calibration and threshold fitting use clean labelled validation data only.
+calibration:
+  enabled: false
+  path: outputs/calibration.json
+  method: platt
+  target_false_positive_rate: 0.01
+  uncertainty_margin: 0.10
+
 # --- Stage 7: transformation consistency ----------------------------------
 # consistency = 1 - (std_weight * std/std_reference + range_weight * range/range_reference)
 # clamped to [0, 1]; 1.0 means the prediction barely moved under transformation.

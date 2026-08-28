@@ -72,13 +72,13 @@ def _robustness_table(per_version: Dict[str, Dict[str, Any]]) -> List[Dict[str, 
                 "accuracy": accuracy,
                 "auc": metrics.get("auc"),
                 "accuracy_drop": (
-                    None
-                    if baseline is None or accuracy is None
-                    else round(baseline - accuracy, 6)
+                    None if baseline is None or accuracy is None else round(baseline - accuracy, 6)
                 ),
             }
         )
-    return sorted(rows, key=lambda row: (row["accuracy_drop"] is None, -(row["accuracy_drop"] or 0)))
+    return sorted(
+        rows, key=lambda row: (row["accuracy_drop"] is None, -(row["accuracy_drop"] or 0))
+    )
 
 
 def run_benchmark(
@@ -107,9 +107,7 @@ def run_benchmark(
             result = pipeline.analyse_image(sample.image, metadata=None)
         except (RuntimeError, ValueError, OSError, MemoryError) as exc:
             report.failed += 1
-            report.errors.append(
-                {"img_id": sample.img_id, "error": f"{type(exc).__name__}: {exc}"}
-            )
+            report.errors.append({"img_id": sample.img_id, "error": f"{type(exc).__name__}: {exc}"})
             continue
 
         binary_labels.append(int(sample.binary_label))
@@ -136,14 +134,14 @@ def run_benchmark(
 
     report.fused = compute_metrics(binary_labels, fused_scores, threshold).as_dict()
     if original_scores:
-        report.original_only = compute_metrics(
-            binary_labels, original_scores, threshold
-        ).as_dict()
+        report.original_only = compute_metrics(binary_labels, original_scores, threshold).as_dict()
 
     for name in version_scores:
-        report.per_version[name] = compute_metrics(
-            version_labels[name], version_scores[name], threshold
-        ).as_dict()
+        metrics = compute_metrics(version_labels[name], version_scores[name], threshold).as_dict()
+        values = np.asarray(version_scores[name], dtype=np.float64)
+        metrics["average_ai_probability"] = round(float(values.mean()), 6)
+        metrics["probability_std"] = round(float(values.std(ddof=0)), 6)
+        report.per_version[name] = metrics
 
     # Accuracy broken down by the dataset's own three classes.
     scores = np.asarray(fused_scores, dtype=np.float64)

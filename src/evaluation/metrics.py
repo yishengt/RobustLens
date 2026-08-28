@@ -24,6 +24,11 @@ class BinaryMetrics:
     precision: float
     recall: float
     f1: float
+    specificity: float
+    false_positive_rate: float
+    false_negative_rate: float
+    balanced_accuracy: float
+    youden_j: float
     auc: float
     average_precision: float
     true_positives: int
@@ -41,11 +46,14 @@ class BinaryMetrics:
             "precision": round(self.precision, 6),
             "recall": round(self.recall, 6),
             "f1": round(self.f1, 6),
+            "specificity": round(self.specificity, 6),
+            "false_positive_rate": round(self.false_positive_rate, 6),
+            "false_negative_rate": round(self.false_negative_rate, 6),
+            "balanced_accuracy": round(self.balanced_accuracy, 6),
+            "youden_j": round(self.youden_j, 6),
             "auc": round(self.auc, 6) if np.isfinite(self.auc) else None,
             "average_precision": (
-                round(self.average_precision, 6)
-                if np.isfinite(self.average_precision)
-                else None
+                round(self.average_precision, 6) if np.isfinite(self.average_precision) else None
             ),
             "confusion_matrix": {
                 "true_positives": self.true_positives,
@@ -131,6 +139,14 @@ def compute_metrics(
         else 0.0
     )
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    specificity = (
+        true_negatives / (true_negatives + false_positives)
+        if (true_negatives + false_positives)
+        else 0.0
+    )
+    false_positive_rate = 1.0 - specificity
+    false_negative_rate = 1.0 - recall
+    balanced_accuracy = (recall + specificity) / 2.0
 
     return BinaryMetrics(
         count=int(y.size),
@@ -141,6 +157,11 @@ def compute_metrics(
         precision=float(precision),
         recall=float(recall),
         f1=float(f1),
+        specificity=float(specificity),
+        false_positive_rate=float(false_positive_rate),
+        false_negative_rate=float(false_negative_rate),
+        balanced_accuracy=float(balanced_accuracy),
+        youden_j=float(recall + specificity - 1.0),
         auc=roc_auc(y, s),
         average_precision=average_precision(y, s),
         true_positives=true_positives,

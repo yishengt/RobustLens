@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from src.evaluation.calibration import ProbabilityCalibrator
 from src.pipeline.model_loader import ModelBundle
 from src.pipeline.preprocessing import Preprocessor
 from src.pipeline.transformations import ORIGINAL_KEY
@@ -36,11 +37,21 @@ class Prediction:
     real_probability: float
     label: str
     is_original: bool = False
+    raw_probability: Optional[float] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "ai_probability": round(float(self.ai_probability), 6),
+            "calibrated_probability": round(float(self.ai_probability), 6),
+            "raw_probability": round(
+                float(
+                    self.raw_probability
+                    if self.raw_probability is not None
+                    else self.ai_probability
+                ),
+                6,
+            ),
             "real_probability": round(float(self.real_probability), 6),
             "label": self.label,
             "is_original": self.is_original,
@@ -67,9 +78,7 @@ def binary_threshold(config: Optional[Dict[str, Any]] = None) -> float:
     return float((config or {}).get("inference", {}).get("threshold", DEFAULT_THRESHOLD))
 
 
-def label_for_probability(
-    probability: float, config: Optional[Dict[str, Any]] = None
-) -> str:
+def label_for_probability(probability: float, config: Optional[Dict[str, Any]] = None) -> str:
     """Map an AI probability to the three-way label.
 
     Default bands: ``[0.00, 0.40)`` likely authentic, ``[0.40, 0.60)``
@@ -141,6 +150,7 @@ def predict_variants(
     preprocessor: Preprocessor,
     config: Optional[Dict[str, Any]] = None,
     batch_size: Optional[int] = None,
+    calibrator: Optional[ProbabilityCalibrator] = None,
 ) -> List[Prediction]:
     """Classify the original plus every transformed version.
 
@@ -158,8 +168,11 @@ def predict_variants(
         names.remove(ORIGINAL_KEY)
         names.insert(0, ORIGINAL_KEY)
 
-    probabilities = predict_images(
+    raw_probabilities = predict_images(
         bundle, [variants[name] for name in names], preprocessor, batch_size
+    )
+    probabilities = (
+        calibrator.transform(raw_probabilities) if calibrator is not None else raw_probabilities
     )
     return [
         Prediction(
@@ -168,8 +181,9 @@ def predict_variants(
             real_probability=float(1.0 - probability),
             label=label_for_probability(float(probability), config),
             is_original=(name == ORIGINAL_KEY),
+            raw_probability=float(raw_probability),
         )
-        for name, probability in zip(names, probabilities)
+        for name, probability, raw_probability in zip(names, probabilities, raw_probabilities)
     ]
 
 

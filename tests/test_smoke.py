@@ -41,9 +41,11 @@ class ProjectStructureTest(unittest.TestCase):
             "src/pipeline/frequency.py",
             "src/pipeline/pipeline.py",
             "src/inference/batch_inference.py",
+            "src/evaluation/calibration.py",
             "src/utils/device.py",
             "src/utils/config.py",
             "scripts/run_inference.py",
+            "scripts/calibrate_threshold.py",
         ]:
             with self.subTest(path=relative_path):
                 self.assertTrue((ROOT / relative_path).is_file(), relative_path)
@@ -87,6 +89,7 @@ class ConfigurationTest(unittest.TestCase):
             "consistency",
             "fusion",
             "frequency",
+            "calibration",
             "confidence",
             "explainability",
             "inference",
@@ -95,9 +98,7 @@ class ConfigurationTest(unittest.TestCase):
                 self.assertIn(section, self.config)
 
     def test_supported_extensions(self) -> None:
-        self.assertEqual(
-            self.config["data"]["extensions"], [".jpg", ".jpeg", ".png", ".webp"]
-        )
+        self.assertEqual(self.config["data"]["extensions"], [".jpg", ".jpeg", ".png", ".webp"])
 
     def test_model_is_lightweight_and_within_the_limit(self) -> None:
         self.assertIn(
@@ -188,6 +189,7 @@ class RuntimeImportTest(unittest.TestCase):
             "src.utils.device",
             "src.utils.config",
             "src.evaluation.metrics",
+            "src.evaluation.calibration",
         ]:
             with self.subTest(module=module_name):
                 importlib.import_module(module_name)

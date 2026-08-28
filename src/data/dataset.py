@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-
 DEFAULT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
@@ -40,6 +39,7 @@ def validate_image(path: str | Path) -> None:
             image.verify()
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise ValueError(f"Invalid or unreadable image '{image_path}': {exc}") from exc
+
 
 def read_image(path: str | Path) -> np.ndarray:
     """Read an image as an RGB NumPy array with a path-aware error."""

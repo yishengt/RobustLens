@@ -259,6 +259,7 @@ machine-specific; relative paths resolve against the project root.
 | `confidence` | confidence weights and High/Medium/Low bands |
 | `explainability` | Grad-CAM toggle and overlay strength |
 | `inference` | batch size, threshold, device |
+| `calibration` | Platt calibration file, FPR target, selected-threshold policy |
 
 ### Label bands
 
@@ -345,6 +346,51 @@ robustness table ranking transformations by how much accuracy they cost.
 Evaluation defaults to the **validation** split. Do not evaluate on data a
 model was trained on — the resulting numbers are meaningless.
 
+## Probability Calibration and Threshold Selection
+
+Raw sigmoid/softmax scores are often overconfident, so a raw score of 0.5 is
+not automatically a reliable decision boundary. This project uses Platt
+scaling: a two-parameter logistic mapping is fitted on the model's raw scores
+from clean labelled validation images. The fitted parameters are saved and
+loaded during inference. Calibration does not use transformed images, test
+images, or demo uploads.
+
+Fit once after placing a trained checkpoint at `checkpoints/best.pt`:
+
+```bash
+python scripts/calibrate_threshold.py \
+  --data-dir data/sid_set \
+  --checkpoint checkpoints/best.pt \
+  --config configs/config.yaml \
+  --output outputs/calibration.json \
+  --report outputs/calibration_report.json
+```
+
+The command accepts only the SID_Set `validation` shard split. It evaluates
+thresholds from 0.01 through 0.99 and saves three operating points: a balanced
+threshold (Youden's J), the lowest threshold meeting a 1% false-positive-rate
+target when possible, and a highest-recall threshold. It then evaluates the
+balanced threshold unchanged on clean images and every configured
+transformation. If the 1% target is not achievable, the report records that
+fact and selects the closest available candidate.
+
+After calibration, set `calibration.enabled: true` in `configs/config.yaml`.
+The saved balanced threshold is then loaded automatically and used consistently
+for every transformation; no transformation receives its own retuned threshold.
+The detailed report includes accuracy, precision, recall, F1, specificity,
+false-positive/negative rates, balanced accuracy, Youden's J, ROC-AUC,
+calibrated probability statistics, reliability diagrams, ECE, Brier score,
+confidence-bin accuracy, ROC/precision-recall curves, and a clean-versus-
+transformed chart.
+
+The methodology is motivated by *Your AI-Generated Image Detector Can Secretly
+Achieve SOTA Accuracy, If Calibrated*, *Fixed-Threshold Evaluation of a Hybrid
+CNN-ViT for AI-Generated Image Detection Across Photos and Art*, and *GenImage:
+A Million-Scale Benchmark for Detecting AI-Generated Image*. No threshold is
+copied from those papers; all selected values come from this project's own
+labelled validation data. Thresholds may need to be refit when the data
+distribution or checkpoint changes.
+
 ---
 
 ## Error handling
@@ -371,7 +417,7 @@ model was trained on — the resulting numbers are meaningless.
 python -m pytest tests/ -q          # or: python -m unittest discover -s tests
 ```
 
-188 tests cover validation (valid, invalid, corrupted, truncated, RGB
+195 tests cover validation (valid, invalid, corrupted, truncated, RGB
 conversion), preprocessing (resizing, normalization, determinism), every
 transformation, model-loading failures, prediction ranges, score fusion,
 confidence calculation, the JSON output formats, batch processing and the
@@ -399,6 +445,7 @@ neither a checkpoint nor the torch stack.
 ├── outputs/                        # generated JSON and images
 ├── scripts/
 │   ├── run_inference.py            # batch inference CLI
+│   ├── calibrate_threshold.py      # validation-only calibration CLI
 │   ├── evaluate_dataset.py         # benchmark against labelled data
 │   ├── download_dataset.py         # fetch SID_Set shards
 │   └── make_dummy_checkpoint.py    # untrained checkpoint for smoke tests
@@ -416,7 +463,7 @@ neither a checkpoint nor the torch stack.
 │   │   ├── explainability.py       # stage 11
 │   │   └── pipeline.py             # orchestrator
 │   ├── inference/batch_inference.py
-│   ├── evaluation/                 # metrics, SID_Set reader, benchmark
+│   ├── evaluation/                 # calibration, metrics, SID_Set reader, benchmark
 │   ├── utils/{device,config}.py
 │   ├── data/                       # legacy albumentations helpers
 │   ├── models/classifier.py        # legacy model builder
@@ -465,8 +512,6 @@ Please read this section before quoting any number from this system.
 
 - Train a frequency-domain classifier so the optional fusion mode carries a
   genuine calibrated signal instead of falling back.
-- Calibrate probabilities (temperature scaling or isotonic regression) against
-  a held-out set, so the label bands mean the same thing across checkpoints.
 - Test-time augmentation ensembling with learned rather than fixed weights.
 - Localisation of manipulated regions, using the segmentation masks SID_Set
   already ships.
