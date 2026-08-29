@@ -50,6 +50,7 @@ class ArchitectureTest(unittest.TestCase):
         self.assertEqual(normalise_architecture("EfficientNet-B0"), "efficientnet_b0")
         self.assertEqual(normalise_architecture("ResNet_18"), "resnet18")
         self.assertEqual(normalise_architecture("ConvNeXt-Tiny"), "convnext_tiny")
+        self.assertEqual(normalise_architecture("SigLIP2-DINOv2"), "dual_backbone")
 
     def test_unsupported_architecture_is_rejected(self) -> None:
         with self.assertRaises(ModelSetupError) as context:

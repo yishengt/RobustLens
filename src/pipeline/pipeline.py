@@ -2,9 +2,9 @@
 
 Runs, in order::
 
-    Input image -> Validation -> Preprocessing -> Transformation generation ->
-    Feature extraction -> Classification -> Per-version predictions ->
-    Consistency check -> Fusion -> Confidence -> Explainability -> Output
+    Input image -> Validation -> Preprocessing -> Whole-image detection ->
+    Patch-level detection -> Transformation testing -> Fusion -> Confidence ->
+    Explainability -> Output
 
 The model is loaded once and reused for every image, so batch runs pay the
 checkpoint cost a single time.
@@ -22,10 +22,15 @@ from PIL import Image
 from src.evaluation.calibration import ProbabilityCalibrator
 from src.pipeline import frequency as frequency_module
 from src.pipeline.confidence import ConfidenceReport, compute_confidence
-from src.pipeline.consistency import ConsistencyReport, compute_consistency
+from src.pipeline.consistency import (
+    ConsistencyReport,
+    compute_consistency,
+    estimate_manipulation_severity,
+)
 from src.pipeline.explainability import ExplanationResult, build_charts, explain
 from src.pipeline.fusion import FusionResult, fuse_predictions
 from src.pipeline.model_loader import ModelBundle, load_model
+from src.pipeline.patches import PatchReport, analyse_patches
 from src.pipeline.prediction import (
     Prediction,
     binary_threshold,
@@ -63,6 +68,8 @@ class PipelineResult:
     metadata: Optional[ImageMetadata] = None
     explanation: Optional[ExplanationResult] = None
     frequency_features: Optional[Dict[str, Any]] = None
+    patches: Optional[PatchReport] = None
+    manipulation_severity: str = "low"
     errors: List[Dict[str, Any]] = field(default_factory=list)
     original_image: Optional[Image.Image] = None
 
@@ -106,6 +113,49 @@ class PipelineResult:
                 self.explanation.as_dict() if self.explanation is not None else None
             ),
             "frequency": self.frequency_features,
+            # --- documented report schema -------------------------------------
+            # `pred` above stays the submission field; these mirror it under the
+            # names used in the README report schema, plus the patch findings.
+            "final_probability": round(float(self.ai_probability), 6),
+            "confidence_level": self.confidence.level.lower(),
+            "transformation_consistency": round(self.consistency.consistency_score, 6),
+            "estimated_manipulation_severity": self.manipulation_severity,
+            "highest_risk_region": (
+                self.patches.highest_risk_region if self.patches is not None else None
+            ),
+            "per_transformation_predictions": self.per_transformation_predictions(),
+            "patch_analysis": self.patches.as_dict() if self.patches is not None else None,
+        }
+
+    def per_transformation_predictions(self) -> Dict[str, float]:
+        """Per-version scores with the untransformed image reported as ``clean``."""
+
+        scores: Dict[str, float] = {}
+        for item in self.predictions:
+            name = "clean" if item.is_original else item.name
+            scores[name] = round(float(item.ai_probability), 6)
+        return scores
+
+    def as_report_dict(self) -> Dict[str, Any]:
+        """The compact human-facing report described in the README."""
+
+        original, _ = split_predictions(self.predictions)
+        raw = original.raw_probability if original else None
+        return {
+            "image_path": self.image_path,
+            "raw_probability": (
+                round(float(raw), 6) if raw is not None else round(float(self.ai_probability), 6)
+            ),
+            "final_probability": round(float(self.ai_probability), 6),
+            "real_probability": round(float(self.real_probability), 6),
+            "label": self.label,
+            "confidence": self.confidence.level.lower(),
+            "transformation_consistency": round(self.consistency.consistency_score, 6),
+            "estimated_manipulation_severity": self.manipulation_severity,
+            "highest_risk_region": (
+                self.patches.highest_risk_region if self.patches is not None else None
+            ),
+            "per_transformation_predictions": self.per_transformation_predictions(),
         }
 
 
@@ -126,6 +176,13 @@ class FailedResult:
             "transform_consistency": None,
             "transformations": {},
             "errors": list(self.errors),
+            "final_probability": None,
+            "confidence_level": "none",
+            "transformation_consistency": None,
+            "estimated_manipulation_severity": None,
+            "highest_risk_region": None,
+            "per_transformation_predictions": {},
+            "patch_analysis": None,
         }
 
 
@@ -231,8 +288,23 @@ class DetectionPipeline:
         if original_prediction is None:  # pragma: no cover - variants always include it
             raise RuntimeError("Pipeline lost the original image prediction")
 
+        # Stage 4b: patch-level detection. Runs on the ORIGINAL image only --
+        # patching every transformed version would multiply the cost by 15 for
+        # no extra localisation information. Never raises.
+        patch_report = analyse_patches(
+            self.bundle,
+            original_image,
+            self.preprocessor,
+            self.config,
+            whole_image_probability=original_prediction.ai_probability,
+            calibrator=self.calibrator,
+        )
+        if not patch_report.available and patch_report.settings.get("enabled", True):
+            errors.append({"stage": "patches", "error": patch_report.message})
+
         # Stage 7: how stable is the model across those versions?
         consistency = compute_consistency(predictions, self.config)
+        manipulation_severity = estimate_manipulation_severity(consistency, self.config)
 
         # Stage 9 (optional): frequency features, and a frequency probability
         # only if a real frequency model is configured.
@@ -258,6 +330,7 @@ class DetectionPipeline:
             self.config,
             consistency=consistency.consistency_score,
             frequency_probability=frequency_probability,
+            patch_evidence=patch_report.evidence if patch_report.available else None,
         )
         final_probability = float(fusion.final_probability)
         label = label_for_probability(final_probability, self.config)
@@ -269,6 +342,7 @@ class DetectionPipeline:
             consistency.consistency_score,
             self.config,
             label=label,
+            patch_agreement=patch_report.agreement if patch_report.available else None,
         )
 
         # Stage 11: explainability, which can never abort the analysis.
@@ -291,6 +365,8 @@ class DetectionPipeline:
             metadata=metadata,
             explanation=explanation,
             frequency_features=frequency_features,
+            patches=patch_report,
+            manipulation_severity=manipulation_severity,
             errors=errors,
             original_image=original_image,
         )

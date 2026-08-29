@@ -19,7 +19,6 @@ import argparse
 import sys
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # STEP 1: Make the project package importable.
 # ---------------------------------------------------------------------------
@@ -78,7 +77,7 @@ def main() -> None:
     # -----------------------------------------------------------------------
     # STEP 3: Report.
     # -----------------------------------------------------------------------
-    print(f"\nRobustLens parameter budget")
+    print("\nRobustLens parameter budget")
     print(f"  SigLIP2 : {DEFAULT_SIGLIP}")
     print(f"  DINOv2  : {DEFAULT_DINOV2}\n")
 
@@ -92,14 +91,16 @@ def main() -> None:
 
     assert siglip + dinov2 + head == total, "component counts must sum to the total"
 
-    print(f"\n  Trainable : {counts['trainable']:>15,}  ({counts['trainable']/total:.2%} of model)")
-    print(f"  Frozen    : {counts['frozen']:>15,}  ({counts['frozen']/total:.2%} of model)")
+    print(
+        f"\n  Trainable : {counts['trainable']:>15,}  ({counts['trainable'] / total:.2%} of model)"
+    )
+    print(f"  Frozen    : {counts['frozen']:>15,}  ({counts['frozen'] / total:.2%} of model)")
 
     # -----------------------------------------------------------------------
     # STEP 4: Verdict against the competition limit.
     # -----------------------------------------------------------------------
     print(f"\n  Limit     : {LIMIT:>15,}")
-    print(f"  Headroom  : {LIMIT - total:>15,}  ({total/LIMIT:.1%} of budget used)")
+    print(f"  Headroom  : {LIMIT - total:>15,}  ({total / LIMIT:.1%} of budget used)")
     if total > LIMIT:
         print("\n  FAIL: model exceeds the 2B parameter limit.")
         raise SystemExit(1)

@@ -55,9 +55,7 @@ def to_binary_label(label: int) -> int:
     return 0 if value == LABEL_REAL else 1
 
 
-def find_shards(
-    data_dir: str | Path, split: Optional[str] = None
-) -> List[Path]:
+def find_shards(data_dir: str | Path, split: Optional[str] = None) -> List[Path]:
     """Find downloaded parquet shards, optionally filtered by split name."""
 
     root = Path(data_dir).expanduser()
@@ -181,3 +179,105 @@ def describe_shards(shards: Sequence[Path]) -> Dict[str, Any]:
         "class_distribution": distribution,
         "files": [shard.name for shard in shards],
     }
+
+
+@dataclass
+class RawRecord:
+    """One dataset row with its image still in its original encoded bytes."""
+
+    data: bytes
+    image_format: str
+    label: int
+    binary_label: int
+    img_id: str
+    source: str
+
+    @property
+    def class_name(self) -> str:
+        return CLASS_NAMES.get(self.label, f"unknown({self.label})")
+
+    @property
+    def extension(self) -> str:
+        """File extension for the stored bytes, e.g. '.jpg'."""
+
+        return {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}.get(
+            self.image_format.upper(), ".bin"
+        )
+
+
+def _identify_format(data: bytes) -> Optional[str]:
+    """Read only the header to learn the encoding, without decoding pixels."""
+
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            return (image.format or "").upper() or None
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+
+
+def iter_raw_records(
+    shards: Sequence[Path],
+    limit: Optional[int] = None,
+    batch_size: int = 32,
+    per_class_limit: Optional[int] = None,
+) -> Iterator[RawRecord]:
+    """Stream rows keeping each image's original encoded bytes.
+
+    Extraction writes these bytes verbatim. Re-encoding would resample the
+    compression artefacts that AI-image detection depends on, so the stored
+    files stay bit-identical to what the dataset shipped.
+    """
+
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as exc:  # pragma: no cover - pyarrow ships with pandas
+        raise ImportError(
+            "pyarrow is required to read SID_Set parquet shards. "
+            "Install it with: pip install pyarrow"
+        ) from exc
+
+    emitted = 0
+    per_class: Dict[int, int] = dict.fromkeys(CLASS_NAMES, 0)
+
+    for shard in shards:
+        parquet_file = pq.ParquetFile(str(shard))
+        available = set(parquet_file.schema_arrow.names)
+        columns = [name for name in ("img_id", "image", "label") if name in available]
+        if "image" not in columns or "label" not in columns:
+            raise ValueError(
+                f"{shard.name} is missing the required 'image'/'label' columns; "
+                f"found {sorted(available)}"
+            )
+
+        for record_batch in parquet_file.iter_batches(
+            batch_size=max(1, int(batch_size)), columns=columns
+        ):
+            for row in record_batch.to_pylist():
+                if limit is not None and emitted >= limit:
+                    return
+                label = int(row["label"])
+                if per_class_limit is not None and per_class.get(label, 0) >= per_class_limit:
+                    continue
+                cell = row["image"]
+                data = cell.get("bytes") if isinstance(cell, dict) else cell
+                if not isinstance(data, (bytes, bytearray, memoryview)):
+                    continue
+                data = bytes(data)
+                image_format = _identify_format(data)
+                if image_format is None:
+                    continue
+                per_class[label] = per_class.get(label, 0) + 1
+                emitted += 1
+                yield RawRecord(
+                    data=data,
+                    image_format=image_format,
+                    label=label,
+                    binary_label=to_binary_label(label),
+                    img_id=str(row.get("img_id") or f"{shard.stem}-{emitted}"),
+                    source=shard.name,
+                )
+
+            if per_class_limit is not None and all(
+                per_class.get(label, 0) >= per_class_limit for label in CLASS_NAMES
+            ):
+                return

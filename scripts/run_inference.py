@@ -55,6 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable the optional frequency/noise analysis module",
     )
+    patches = parser.add_mutually_exclusive_group()
+    patches.add_argument(
+        "--patches",
+        dest="patches",
+        action="store_true",
+        default=None,
+        help="Enable patch-level localisation (adds one forward pass per patch)",
+    )
+    patches.add_argument(
+        "--no-patches",
+        dest="patches",
+        action="store_false",
+        help="Disable patch-level localisation (default in batch mode, for speed)",
+    )
     parser.add_argument(
         "--limit", type=int, default=None, help="Only process the first N images"
     )
@@ -104,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         config.setdefault("transformations", {})["enabled"] = False
     if args.frequency:
         config.setdefault("frequency", {})["enabled"] = True
+    # Patch analysis costs one forward pass per patch on every image, so batch
+    # runs opt out by default. --patches turns it back on.
+    config.setdefault("patches", {})["enabled"] = bool(args.patches)
 
     input_dir = resolve_config_path(config, args.input_dir)
 

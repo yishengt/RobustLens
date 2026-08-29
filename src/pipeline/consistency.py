@@ -115,3 +115,31 @@ def compute_consistency(
         agreement=agreement,
         num_versions=int(values.size),
     )
+
+
+SEVERITY_LOW = "low"
+SEVERITY_MEDIUM = "medium"
+SEVERITY_HIGH = "high"
+
+
+def estimate_manipulation_severity(
+    report: ConsistencyReport, config: Optional[Dict[str, Any]] = None
+) -> str:
+    """Describe how sensitive this image's score was to transformation.
+
+    This is a statement about *observable transformation sensitivity*, nothing
+    more. A score that moves a lot under compression and blur is fragile
+    evidence; that is what "high" means here. It is explicitly **not** a claim
+    about how many times an image was edited, re-uploaded or passed through a
+    platform - that history is not recoverable from a single image.
+    """
+
+    settings = (config or {}).get("consistency", {}) or {}
+    medium_at = float(settings.get("severity_medium_max", 0.85))
+    low_at = float(settings.get("severity_low_min", 0.95))
+    score = float(report.consistency_score)
+    if score >= low_at:
+        return SEVERITY_LOW
+    if score >= medium_at:
+        return SEVERITY_MEDIUM
+    return SEVERITY_HIGH

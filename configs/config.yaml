@@ -25,11 +25,34 @@ validation:
 
 # --- Stage 5: model loading ------------------------------------------------
 model:
-  name: efficientnet_b0        # efficientnet_b0 | resnet18 | convnext_tiny
+  # efficientnet_b0 | resnet18 | convnext_tiny | dual_backbone | bombek_siglip2_dinov2
+  # A checkpoint whose tensors unambiguously identify an architecture (the
+  # external Bombek1 detector does) overrides this name at load time.
+  name: efficientnet_b0
   pretrained: false            # inference loads weights from the checkpoint
   num_classes: 1               # 1 = single logit + sigmoid, 2 = softmax pair
   ai_class_index: 1            # which column is "AI-generated" when num_classes == 2
   max_parameters: 2000000000   # hard competition limit: fewer than 2B parameters
+  # Native dual_backbone detector (src/models/dual_backbone.py)
+  dual:
+    siglip_name: google/siglip2-so400m-patch14-384
+    dinov2_name: facebook/dinov2-large
+    hidden_dim: 3584
+    dropout: 0.2
+    pretrained: true
+  # External Bombek1 SigLIP2+DINOv2 LoRA detector. A DIFFERENT architecture
+  # from `dual` above: PEFT-wrapped SigLIP2, timm DINOv2, and a 512/256 head.
+  # Values here are defaults only; the checkpoint's own embedded `config`
+  # block wins, so an upstream change cannot silently mismatch.
+  bombek:
+    siglip_model: google/siglip2-so400m-patch14-384
+    dinov2_model: vit_large_patch14_dinov2.lvd142m
+    image_size: 392
+    lora_rank: 32
+    lora_alpha: 64
+    lora_dropout: 0.1
+    hidden_dim: 512
+    classifier_dropout: 0.3
 
 # --- Stage 3: preprocessing ------------------------------------------------
 normalization:
@@ -77,11 +100,33 @@ consistency:
   std_weight: 0.5
   range_weight: 0.5
 
+# --- Stage 4b: patch-level AI-edit localisation ----------------------------
+# Every patch is a full forward pass, so max_patches bounds the cost. Patch
+# analysis is skipped for images smaller than min_patch_size, and the pipeline
+# falls back to whole-image + transformation fusion when that happens.
+patches:
+  enabled: true
+  patch_size: 256              # window size in original-image pixels
+  stride: 192                  # < patch_size gives overlapping patches
+  min_patch_size: 64           # below this the image is too small to tile
+  max_patches: 12              # hard cap; larger grids are evenly subsampled
+  top_k: 3                     # how many highest-risk patches to report
+  heatmap_threshold: 0.5       # used only for highlighting in the demo
+  evidence_statistic: top_k_mean   # top_k_mean | max | mean
+
 # --- Stage 8: prediction fusion -------------------------------------------
 fusion:
-  mode: rgb_transform          # rgb_transform | frequency
-  original_weight: 0.7
+  # whole_patch_transform | rgb_transform | frequency
+  mode: whole_patch_transform
+  original_weight: 0.7         # used by the rgb_transform mode
   transform_weight: 0.3
+  # whole_patch_transform: 60 % whole image, 20 % transformed mean, 20 % patch
+  # evidence. If patch analysis is unavailable the patch weight is dropped and
+  # the remaining two are renormalised (0.75 / 0.25).
+  whole_patch:
+    whole_weight: 0.6
+    transform_weight: 0.2
+    patch_weight: 0.2
   frequency:                   # only used when mode == frequency AND a working
     rgb_weight: 0.5            # frequency model is available
     frequency_weight: 0.3
@@ -97,9 +142,12 @@ frequency:
 
 # --- Stage 10: confidence scoring -----------------------------------------
 confidence:
-  decisiveness_weight: 0.4     # how far the final probability sits from 0.5
-  agreement_weight: 0.3        # share of versions agreeing with the original
-  consistency_weight: 0.3      # transformation consistency score
+  decisiveness_weight: 0.35    # how far the final probability sits from 0.5
+  agreement_weight: 0.25       # share of versions agreeing with the original
+  consistency_weight: 0.25     # transformation consistency score
+  patch_agreement_weight: 0.15 # share of patches agreeing with the whole image
+                               # (dropped and the rest renormalised when patch
+                               #  analysis is unavailable)
   high_min: 0.70
   medium_min: 0.45
 

@@ -27,12 +27,14 @@ checkpoints/*.json
 outputs/*.json
 outputs/*.csv
 outputs/*.png
-data/splits/*.json
-data/processed/robustness/
 
 # Downloaded datasets (SID_Set shards are ~495 MB each)
 data/sid_set/
 *.parquet
+
+# Images unpacked from dataset shards by scripts/extract_dataset.py.
+# Regenerable from the parquet files; ~2 GB, thousands of files.
+data/extracted/
 .cache/
 .huggingface/
 
