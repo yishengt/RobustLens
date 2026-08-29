@@ -38,6 +38,29 @@ data/extracted/
 .cache/
 .huggingface/
 
+# Datasets: never committed. Fetched per the README setup steps.
+data/raw/**
+!data/raw/**/.gitkeep
+data/processed/**
+!data/processed/**/.gitkeep
+
+# Model weights and cached features.
+# CLIP weights are downloaded on demand by open_clip and cached outside the
+# repo (~/.cache/huggingface), so they are never committed. The trained probe
+# is only ~10KB, so it IS committed -- see the exception below.
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+.cache/
+
+# Exception: the trained probe and its calibration are small enough to ship,
+# which is what makes the repo clone-and-run with no checkpoint hosting.
+!checkpoints/probe.pkl
+!checkpoints/calibration.json
+
 # Streamlit secrets
 .streamlit/secrets.toml
 

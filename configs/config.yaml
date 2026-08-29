@@ -29,32 +29,22 @@ model:
   # A checkpoint whose tensors unambiguously identify an architecture (the
   # external Bombek1 detector does) overrides this name at load time.
   name: efficientnet_b0
-  pretrained: false            # inference loads weights from the checkpoint
-  num_classes: 1               # 1 = single logit + sigmoid, 2 = softmax pair
-  ai_class_index: 1            # which column is "AI-generated" when num_classes == 2
-  max_parameters: 2000000000   # hard competition limit: fewer than 2B parameters
-  # Native dual_backbone detector (src/models/dual_backbone.py)
-  dual:
-    siglip_name: google/siglip2-so400m-patch14-384
-    dinov2_name: facebook/dinov2-large
-    hidden_dim: 3584
-    dropout: 0.2
-    pretrained: true
-  # External Bombek1 SigLIP2+DINOv2 LoRA detector. A DIFFERENT architecture
-  # from `dual` above: PEFT-wrapped SigLIP2, timm DINOv2, and a 512/256 head.
-  # Values here are defaults only; the checkpoint's own embedded `config`
-  # block wins, so an upstream change cannot silently mismatch.
-  bombek:
-    siglip_model: google/siglip2-so400m-patch14-384
-    dinov2_model: vit_large_patch14_dinov2.lvd142m
-    image_size: 392
-    lora_rank: 32
-    lora_alpha: 64
-    lora_dropout: 0.1
-    hidden_dim: 512
-    classifier_dropout: 0.3
+  # Must stay true: training from scratch on hackathon-scale data both
+  # underperforms and overfits hard to the training generator's fingerprint.
+  pretrained: true
+  num_classes: 1
 
-# --- Stage 3: preprocessing ------------------------------------------------
+# Frozen CLIP backbone used by src/features/clip_features.py.
+# These two strings are the reproducibility contract -- the weights are
+# downloaded on demand and cached outside the repo, never committed.
+clip:
+  model_name: ViT-L-14      # ViT-B-32 is ~4x faster; use it while debugging
+  pretrained: openai        # 2020 WIT scrape, predates diffusion imagery
+  normalize: true           # L2-normalize features before the probe
+  batch_size: 32
+  device: auto
+  cache_path: data/processed/clip_features.npz
+
 normalization:
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
