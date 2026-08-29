@@ -1,4 +1,15 @@
-"""Small checks that run before or after installing the ML dependencies."""
+"""Dependency-light smoke tests for the inference-only project.
+
+These run without a model checkpoint and without the torch stack installed.
+They check the project layout, the configuration file and the JSON contract.
+
+Mock vs real inference
+----------------------
+Nothing here performs real inference. Tests that exercise the model use an
+UNTRAINED checkpoint built on the fly (see ``tests/helpers.py``) and verify
+plumbing only. Detection accuracy can only be measured with a real trained
+checkpoint via ``scripts/evaluate_dataset.py``.
+"""
 
 from __future__ import annotations
 
@@ -7,91 +18,217 @@ import json
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class FoundationSmokeTest(unittest.TestCase):
-    def test_expected_structure_exists(self) -> None:
-        expected = [
+class ProjectStructureTest(unittest.TestCase):
+    def test_pipeline_modules_exist(self) -> None:
+        for relative_path in [
             "README.md",
             "requirements.txt",
-            "configs/config.yaml",
-            "src/data/dataset.py",
-            "src/data/augmentations.py",
-            "src/models/classifier.py",
-            "src/training/train.py",
-            "src/evaluation/evaluate.py",
-            "src/evaluation/robustness_test.py",
-            "src/evaluation/error_analysis.py",
-            "src/evaluation/materialize_transforms.py",
-            "src/evaluation/materialized.py",
-            "src/inference/predict.py",
-            "src/features/engineering.py",
-            "src/explainability/gradcam.py",
-            "scripts/run_inference.py",
             "app.py",
-        ]
-        for relative_path in expected:
-            self.assertTrue((ROOT / relative_path).is_file(), relative_path)
+            "configs/config.yaml",
+            "models/README.md",
+            "src/pipeline/validation.py",
+            "src/pipeline/preprocessing.py",
+            "src/pipeline/transformations.py",
+            "src/pipeline/model_loader.py",
+            "src/pipeline/prediction.py",
+            "src/pipeline/consistency.py",
+            "src/pipeline/fusion.py",
+            "src/pipeline/confidence.py",
+            "src/pipeline/explainability.py",
+            "src/pipeline/frequency.py",
+            "src/pipeline/pipeline.py",
+            "src/inference/batch_inference.py",
+            "src/evaluation/calibration.py",
+            "src/utils/device.py",
+            "src/utils/config.py",
+            "scripts/run_inference.py",
+            "scripts/calibrate_threshold.py",
+        ]:
+            with self.subTest(path=relative_path):
+                self.assertTrue((ROOT / relative_path).is_file(), relative_path)
 
-    def test_config_is_valid_yaml_when_dependency_is_available(self) -> None:
+    def test_training_modules_remain_absent(self) -> None:
+        """This project is inference-only; no training code should exist."""
+
+        for relative_path in [
+            "src/training",
+            "src/features",
+            "src/evaluation/train.py",
+        ]:
+            with self.subTest(path=relative_path):
+                self.assertFalse((ROOT / relative_path).exists(), relative_path)
+
+    def test_checkpoints_are_not_committed(self) -> None:
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("checkpoints/*.pt", gitignore)
+
+
+class ConfigurationTest(unittest.TestCase):
+    def setUp(self) -> None:
         try:
-            yaml = importlib.import_module("yaml")
+            self.yaml = importlib.import_module("yaml")
         except ModuleNotFoundError:
-            self.skipTest("PyYAML is not installed; install requirements.txt for runtime checks")
+            self.skipTest("PyYAML is not installed; install requirements.txt")
         with (ROOT / "configs/config.yaml").open(encoding="utf-8") as handle:
-            config = yaml.safe_load(handle)
-        self.assertEqual(config["model"]["name"], "efficientnet_b0")
-        self.assertEqual(config["training"]["threshold"], 0.5)
+            self.config = self.yaml.safe_load(handle)
 
-    def test_inference_json_contract(self) -> None:
-        sample = [{"image_path": "path/to/image.jpg", "pred": 0.91}]
-        encoded = json.dumps(sample)
-        decoded = json.loads(encoded)
+    def test_config_is_a_mapping(self) -> None:
+        self.assertIsInstance(self.config, dict)
+
+    def test_required_sections_are_present(self) -> None:
+        for section in [
+            "data",
+            "validation",
+            "model",
+            "normalization",
+            "transformations",
+            "labels",
+            "consistency",
+            "patches",
+            "fusion",
+            "frequency",
+            "calibration",
+            "confidence",
+            "explainability",
+            "inference",
+        ]:
+            with self.subTest(section=section):
+                self.assertIn(section, self.config)
+
+    def test_supported_extensions(self) -> None:
+        self.assertEqual(self.config["data"]["extensions"], [".jpg", ".jpeg", ".png", ".webp"])
+
+    def test_model_is_lightweight_and_within_the_limit(self) -> None:
+        self.assertIn(
+            self.config["model"]["name"],
+            {"efficientnet_b0", "resnet18", "convnext_tiny"},
+        )
+        self.assertLessEqual(self.config["model"]["max_parameters"], 2_000_000_000)
+
+    def test_image_size_is_224(self) -> None:
+        self.assertEqual(self.config["data"]["image_size"], 224)
+
+    def test_label_bands_match_the_specification(self) -> None:
+        self.assertAlmostEqual(self.config["labels"]["authentic_max"], 0.40)
+        self.assertAlmostEqual(self.config["labels"]["ai_min"], 0.60)
+
+    def test_transformations_cover_the_required_families(self) -> None:
+        settings = self.config["transformations"]
+        self.assertEqual(settings["jpeg_qualities"], [90, 70, 50, 30])
+        self.assertEqual(settings["blur_sigmas"], [0.5, 1.0, 2.0])
+        self.assertEqual(settings["resize_scales"], [0.5, 0.25])
+        self.assertEqual(settings["noise_sigmas"], [0.02, 0.05, 0.10])
+        self.assertAlmostEqual(settings["center_crop_fraction"], 0.8)
+        for channel in ("brightness", "contrast", "saturation"):
+            self.assertAlmostEqual(settings["color_jitter"][channel], 0.2)
+
+    def test_default_fusion_is_whole_patch_transform(self) -> None:
+        """Default: 60 % whole image, 20 % transformed mean, 20 % patch evidence."""
+
+        self.assertEqual(self.config["fusion"]["mode"], "whole_patch_transform")
+        weights = self.config["fusion"]["whole_patch"]
+        self.assertAlmostEqual(weights["whole_weight"], 0.6)
+        self.assertAlmostEqual(weights["transform_weight"], 0.2)
+        self.assertAlmostEqual(weights["patch_weight"], 0.2)
+        self.assertAlmostEqual(
+            weights["whole_weight"] + weights["transform_weight"] + weights["patch_weight"], 1.0
+        )
+
+    def test_two_term_fusion_weights_remain_available(self) -> None:
+        """The simpler rgb_transform mode stays configured for fallback use."""
+
+        self.assertAlmostEqual(self.config["fusion"]["original_weight"], 0.7)
+        self.assertAlmostEqual(self.config["fusion"]["transform_weight"], 0.3)
+
+    def test_patch_section_is_present(self) -> None:
+        patches = self.config["patches"]
+        self.assertTrue(patches["enabled"])
+        self.assertGreater(patches["patch_size"], 0)
+        self.assertLess(patches["stride"], patches["patch_size"])  # overlapping
+        self.assertGreater(patches["max_patches"], 1)
+        self.assertIn(patches["evidence_statistic"], {"top_k_mean", "max", "mean"})
+
+    def test_frequency_analysis_is_disabled_by_default(self) -> None:
+        self.assertFalse(self.config["frequency"]["enabled"])
+
+    def test_optional_frequency_weights_are_fifty_thirty_twenty(self) -> None:
+        weights = self.config["fusion"]["frequency"]
+        self.assertAlmostEqual(weights["rgb_weight"], 0.5)
+        self.assertAlmostEqual(weights["frequency_weight"], 0.3)
+        self.assertAlmostEqual(weights["consistency_weight"], 0.2)
+
+
+class JsonContractTest(unittest.TestCase):
+    """The required submission format, checked without running a model."""
+
+    def test_simple_record_shape(self) -> None:
+        sample = [{"image_path": "images/example.jpg", "pred": 0.84}]
+        decoded = json.loads(json.dumps(sample))
         self.assertEqual(set(decoded[0]), {"image_path", "pred"})
         self.assertGreaterEqual(decoded[0]["pred"], 0.0)
         self.assertLessEqual(decoded[0]["pred"], 1.0)
 
-    def test_runtime_imports_when_dependencies_are_available(self) -> None:
-        required = [
-            "torch",
-            "torchvision",
-            "albumentations",
-            "PIL",
-            "cv2",
-            "numpy",
-            "sklearn",
-            "yaml",
-            "streamlit",
-        ]
-        missing = []
-        for module_name in required:
-            try:
-                importlib.import_module(module_name)
-            except ModuleNotFoundError:
-                missing.append(module_name)
+    def test_detailed_record_shape(self) -> None:
+        sample = {
+            "image_path": "images/example.jpg",
+            "pred": 0.84,
+            "label": "Likely AI-generated",
+            "confidence": "High",
+            "real_probability": 0.16,
+            "transform_consistency": 0.93,
+            "transformations": {"jpeg_q70": 0.82},
+            "errors": [],
+        }
+        decoded = json.loads(json.dumps(sample))
+        self.assertEqual(decoded["pred"] + decoded["real_probability"], 1.0)
+        self.assertIsInstance(decoded["transformations"], dict)
+        self.assertIsInstance(decoded["errors"], list)
+
+
+class RuntimeImportTest(unittest.TestCase):
+    def test_pipeline_modules_import_when_dependencies_are_installed(self) -> None:
+        required = ["torch", "torchvision", "PIL", "numpy", "yaml"]
+        missing = [name for name in required if not _importable(name)]
         if missing:
-            self.skipTest(
-                "Runtime dependencies are not installed: "
-                + ", ".join(missing)
-            )
+            self.skipTest("Runtime dependencies missing: " + ", ".join(missing))
+
         for module_name in [
-            "src.data.dataset",
-            "src.data.augmentations",
-            "src.models.classifier",
-            "src.training.train",
-            "src.evaluation.evaluate",
-            "src.evaluation.robustness_test",
-            "src.evaluation.error_analysis",
-            "src.evaluation.materialize_transforms",
-            "src.evaluation.materialized",
-            "src.inference.predict",
-            "src.features.engineering",
-            "src.explainability.gradcam",
+            "src.pipeline.validation",
+            "src.pipeline.preprocessing",
+            "src.pipeline.transformations",
+            "src.pipeline.model_loader",
+            "src.pipeline.prediction",
+            "src.pipeline.consistency",
+            "src.pipeline.fusion",
+            "src.pipeline.confidence",
+            "src.pipeline.explainability",
+            "src.pipeline.frequency",
+            "src.pipeline.pipeline",
+            "src.inference.batch_inference",
+            "src.utils.device",
+            "src.utils.config",
+            "src.evaluation.metrics",
+            "src.evaluation.calibration",
         ]:
             with self.subTest(module=module_name):
                 importlib.import_module(module_name)
+
+    def test_validation_module_needs_only_pillow(self) -> None:
+        if not _importable("PIL"):
+            self.skipTest("Pillow is not installed")
+        module = importlib.import_module("src.pipeline.validation")
+        self.assertTrue(hasattr(module, "validate_image_file"))
+
+
+def _importable(name: str) -> bool:
+    try:
+        importlib.import_module(name)
+    except ModuleNotFoundError:
+        return False
+    return True
 
 
 if __name__ == "__main__":

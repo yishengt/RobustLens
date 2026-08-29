@@ -3,35 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 
 from src.models.classifier import build_model
-
-
-def save_checkpoint(
-    path: str | Path,
-    model: torch.nn.Module,
-    optimizer: Optional[torch.optim.Optimizer],
-    epoch: int,
-    metrics: Dict[str, Any],
-    model_name: str,
-    image_size: int,
-) -> None:
-    """Save model, optimizer, and experiment metadata."""
-
-    checkpoint_path = Path(path).expanduser()
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "epoch": int(epoch),
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict() if optimizer is not None else None,
-        "metrics": metrics,
-        "model_name": model_name,
-        "image_size": int(image_size),
-    }
-    torch.save(payload, checkpoint_path)
 
 
 def _torch_load(path: Path, device: str) -> Any:

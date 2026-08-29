@@ -27,8 +27,16 @@ checkpoints/*.json
 outputs/*.json
 outputs/*.csv
 outputs/*.png
-data/splits/*.json
-data/processed/robustness/
+
+# Downloaded datasets (SID_Set shards are ~495 MB each)
+data/sid_set/
+*.parquet
+
+# Images unpacked from dataset shards by scripts/extract_dataset.py.
+# Regenerable from the parquet files; ~2 GB, thousands of files.
+data/extracted/
+.cache/
+.huggingface/
 
 # Datasets: never committed. Fetched per the README setup steps.
 data/raw/**
@@ -55,3 +63,14 @@ data/processed/**
 
 # Streamlit secrets
 .streamlit/secrets.toml
+
+# Large model checkpoints anywhere in the tree, not just checkpoints/.
+# Bombek1's pytorch_model.pt is 2.0GB and sits at the repository root;
+# GitHub rejects files over 100MB, and git keeps blobs forever once added.
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# macOS
+.DS_Store

@@ -6,6 +6,8 @@ import argparse
 from pathlib import Path
 from typing import Any, Optional
 
+import torch.nn as nn
+
 
 def _last_convolution(model: Any) -> Any:
     """Find a spatial convolutional layer suitable for Grad-CAM."""
@@ -31,7 +33,6 @@ def explain_image(
     import cv2
     import numpy as np
     import torch
-    import torch.nn as nn
     from PIL import Image
 
     from src.data.dataset import read_image
@@ -71,7 +72,9 @@ def explain_image(
     cam = cv2.resize(cam.astype(np.float32), (image_array.shape[1], image_array.shape[0]))
     heatmap = cv2.applyColorMap(np.uint8(cam * 255.0), cv2.COLORMAP_JET)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-    overlay = np.clip(0.55 * image_array.astype(np.float32) + 0.45 * heatmap, 0, 255).astype(np.uint8)
+    overlay = np.clip(0.55 * image_array.astype(np.float32) + 0.45 * heatmap, 0, 255).astype(
+        np.uint8
+    )
     output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(overlay).save(output)
