@@ -4,6 +4,7 @@ torchvision>=0.17
 Pillow>=10.0
 numpy>=1.24
 PyYAML>=6.0
+transformers>=4.45
 
 # Streamlit demo (app.py); pandas backs the charts and tables
 streamlit>=1.32

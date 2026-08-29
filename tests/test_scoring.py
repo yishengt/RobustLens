@@ -16,12 +16,14 @@ from src.pipeline.confidence import (
 )
 from src.pipeline.consistency import compute_consistency, consistency_score
 from src.pipeline.fusion import MODE_FREQUENCY, MODE_RGB_TRANSFORM, fuse_predictions
+from src.pipeline.model_loader import ModelBundle
 from src.pipeline.prediction import (
     LABEL_AI,
     LABEL_AUTHENTIC,
     LABEL_UNCERTAIN,
     Prediction,
     label_for_probability,
+    predict_tensor_batch,
     probabilities_from_logits,
 )
 from tests.helpers import base_config
@@ -103,6 +105,33 @@ class ProbabilityConversionTest(unittest.TestCase):
     def test_out_of_range_class_index_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             probabilities_from_logits(torch.zeros(1, 2), num_classes=2, ai_class_index=5)
+
+
+class DualBackboneInputTest(unittest.TestCase):
+    def test_dual_backbone_receives_two_processor_specific_batches(self) -> None:
+        class StubDualModel(torch.nn.Module):
+            def forward(self, siglip_pixels, dinov2_pixels):
+                self.seen_shapes = (tuple(siglip_pixels.shape), tuple(dinov2_pixels.shape))
+                return siglip_pixels.mean(dim=(1, 2, 3)) + dinov2_pixels.mean(dim=(1, 2, 3))
+
+        model = StubDualModel()
+        bundle = ModelBundle(
+            model=model,
+            device=torch.device("cpu"),
+            architecture="dual_backbone",
+            num_classes=1,
+            num_parameters=2,
+            checkpoint_path="stub.pt",
+            input_kind="dual",
+            processors=(object(), object()),
+        )
+        result = predict_tensor_batch(
+            bundle,
+            (torch.ones(2, 3, 384, 384), torch.zeros(2, 3, 224, 224)),
+        )
+        self.assertEqual(model.seen_shapes, ((2, 3, 384, 384), (2, 3, 224, 224)))
+        self.assertEqual(result.shape, (2,))
+        self.assertTrue(np.all(result > 0.5))
 
 
 class ConsistencyTest(unittest.TestCase):

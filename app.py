@@ -11,6 +11,7 @@ per-transformation predictions, and a Grad-CAM heatmap where available.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -28,6 +29,7 @@ from src.pipeline.confidence import (  # noqa: E402
     CONFIDENCE_MEDIUM,
 )
 from src.pipeline.model_loader import ModelSetupError  # noqa: E402
+from src.pipeline.patches import overlay_patch_heatmap  # noqa: E402
 from src.pipeline.pipeline import DetectionPipeline, PipelineResult  # noqa: E402
 from src.pipeline.prediction import LABEL_AI, LABEL_AUTHENTIC  # noqa: E402
 from src.pipeline.validation import ImageValidationError  # noqa: E402
@@ -59,6 +61,12 @@ def confidence_badge(level: str) -> str:
     return f":{colour.get(level, 'gray')}[**{level}**]"
 
 
+def is_calibrated(pipeline: DetectionPipeline) -> bool:
+    """True when persisted calibration parameters were loaded."""
+
+    return getattr(pipeline, "calibrator", None) is not None
+
+
 def render_metadata(result: PipelineResult) -> None:
     metadata = result.metadata
     if metadata is None:
@@ -79,14 +87,15 @@ def render_headline(result: PipelineResult) -> None:
     columns[0].metric("AI-generated probability", f"{result.ai_probability:.1%}")
     columns[1].metric("Real-image probability", f"{result.real_probability:.1%}")
     columns[2].metric("Confidence", result.confidence.level)
-    columns[3].metric(
-        "Transformation consistency", f"{result.consistency.consistency_score:.1%}"
-    )
+    columns[3].metric("Transformation consistency", f"{result.consistency.consistency_score:.1%}")
     st.progress(
         min(1.0, max(0.0, float(result.ai_probability))),
         text=f"AI-generated likelihood: {result.ai_probability:.1%}",
     )
-    st.markdown(f"Confidence level: {confidence_badge(result.confidence.level)}")
+    st.markdown(
+        f"Confidence level: {confidence_badge(result.confidence.level)} · "
+        f"estimated transformation sensitivity: **{result.manipulation_severity}**"
+    )
 
 
 def render_per_transformation(result: PipelineResult) -> None:
@@ -129,9 +138,7 @@ def render_charts(result: PipelineResult) -> None:
     if drift and drift["labels"]:
         st.subheader(drift["title"])
         st.caption("Positive bars mean the transformation pushed the score toward AI-generated.")
-        st.bar_chart(
-            pd.DataFrame({"Drift": drift["values"]}, index=drift["labels"]), height=260
-        )
+        st.bar_chart(pd.DataFrame({"Drift": drift["values"]}, index=drift["labels"]), height=260)
 
     components = charts.get("confidence_components")
     if components:
@@ -140,6 +147,65 @@ def render_charts(result: PipelineResult) -> None:
             pd.DataFrame({"Score": components["values"]}, index=components["labels"]),
             height=240,
         )
+
+
+def render_patches(result: PipelineResult) -> None:
+    """Patch-risk heatmap, highest-risk regions, and the honest caveats."""
+
+    st.subheader("Patch-level risk map")
+    report = result.patches
+    if report is None:
+        st.info("Patch-level analysis was not run for this image.")
+        return
+    if not report.available:
+        st.warning(report.message)
+        return
+
+    overlay = overlay_patch_heatmap(result.original_image, report)
+    left, right = st.columns(2)
+    if result.original_image is not None:
+        left.image(result.original_image, caption="Original", use_container_width=True)
+    if overlay is not None:
+        right.image(
+            overlay,
+            caption=f"Patch risk ({len(report.patches)} patches; top {len(report.top_patches)} outlined)",
+            use_container_width=True,
+        )
+
+    stats = st.columns(4)
+    stats[0].metric("Patches scored", len(report.patches))
+    stats[1].metric("Mean patch p(AI)", f"{report.mean_probability:.1%}")
+    stats[2].metric("Max patch p(AI)", f"{report.max_probability:.1%}")
+    stats[3].metric("Patch agreement", f"{report.agreement:.0%}")
+
+    if report.coverage is not None and float(report.coverage.mean()) < 0.999:
+        st.caption(
+            f"Patches covered {report.coverage.mean():.0%} of the image; uncovered areas are "
+            f"left untinted because nothing was measured there, not because they look authentic."
+        )
+
+    st.markdown("**Highest-risk regions**")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Rank": rank,
+                    "x": patch.x,
+                    "y": patch.y,
+                    "width": patch.width,
+                    "height": patch.height,
+                    "p(AI)": round(patch.ai_probability, 4),
+                }
+                for rank, patch in enumerate(report.top_patches, start=1)
+            ]
+        ).set_index("Rank"),
+        use_container_width=True,
+    )
+    st.caption(
+        "A warm patch means the detector responded strongly to that region. It is "
+        "a potentially manipulated region worth a human look - not proof that the "
+        "region was edited."
+    )
 
 
 def render_explainability(result: PipelineResult) -> None:
@@ -242,13 +308,32 @@ def main() -> None:
     st.divider()
     render_per_transformation(result)
     st.divider()
+    render_patches(result)
+    st.divider()
     render_charts(result)
     st.divider()
     render_explainability(result)
     render_errors(result)
 
+    if not is_calibrated(pipeline):
+        st.info(
+            "**Uncalibrated model score.** No calibration parameters are loaded, so the "
+            "probability is the model's raw score rather than a statistically calibrated "
+            "one. Fit calibration with `scripts/calibrate_threshold.py` on labelled "
+            "validation data to make these numbers comparable across checkpoints."
+        )
+
+    detailed = result.as_detailed_dict()
+    st.download_button(
+        "Download detailed JSON",
+        data=json.dumps(detailed, indent=2),
+        file_name=f"{Path(result.image_path).stem or 'result'}_detection.json",
+        mime="application/json",
+    )
+    with st.expander("Compact report schema"):
+        st.json(result.as_report_dict())
     with st.expander("Full JSON result"):
-        st.json(result.as_detailed_dict())
+        st.json(detailed)
 
 
 if __name__ == "__main__":

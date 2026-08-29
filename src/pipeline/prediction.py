@@ -114,15 +114,35 @@ def probabilities_from_logits(
 
 
 @torch.inference_mode()
-def predict_tensor_batch(bundle: ModelBundle, batch: torch.Tensor) -> np.ndarray:
-    """Run a preprocessed ``NxCxHxW`` batch through the model."""
+def predict_tensor_batch(
+    bundle: ModelBundle, batch: torch.Tensor | Tuple[torch.Tensor, torch.Tensor]
+) -> np.ndarray:
+    """Run a single- or dual-input preprocessed batch through the model."""
 
-    if batch.dim() == 3:
-        batch = batch.unsqueeze(0)
-    if batch.dim() != 4:
-        raise ValueError(f"Expected a 4-D NCHW batch, got shape {tuple(batch.shape)}")
-    outputs = bundle.model(batch.to(bundle.device))
+    if bundle.input_kind == "dual":
+        if not isinstance(batch, tuple) or len(batch) != 2:
+            raise ValueError("Dual-backbone inference requires (SigLIP2 batch, DINOv2 batch)")
+        siglip_batch, dinov2_batch = batch
+        outputs = bundle.model(siglip_batch.to(bundle.device), dinov2_batch.to(bundle.device))
+    else:
+        if not isinstance(batch, torch.Tensor):
+            raise ValueError("Single-backbone inference requires a tensor batch")
+        if batch.dim() == 3:
+            batch = batch.unsqueeze(0)
+        if batch.dim() != 4:
+            raise ValueError(f"Expected a 4-D NCHW batch, got shape {tuple(batch.shape)}")
+        outputs = bundle.model(batch.to(bundle.device))
     return probabilities_from_logits(outputs, bundle.num_classes, bundle.ai_class_index)
+
+
+def _processor_batch(processor: Any, images: Sequence[Image.Image]) -> torch.Tensor:
+    """Run one Hugging Face image processor and return its pixel-value batch."""
+
+    encoded = processor(images=list(images), return_tensors="pt")
+    pixels = encoded.get("pixel_values") if hasattr(encoded, "get") else None
+    if not isinstance(pixels, torch.Tensor):
+        raise ValueError("Dual-backbone image processor returned no pixel_values tensor")
+    return pixels
 
 
 def predict_images(
@@ -140,7 +160,16 @@ def predict_images(
     chunks: List[np.ndarray] = []
     for start in range(0, len(images), batch_size):
         window = images[start : start + batch_size]
-        chunks.append(predict_tensor_batch(bundle, preprocessor.batch(window)))
+        if bundle.input_kind == "dual":
+            if bundle.processors is None:
+                raise ValueError("Dual-backbone model has no image processors")
+            batch = (
+                _processor_batch(bundle.processors[0], window),
+                _processor_batch(bundle.processors[1], window),
+            )
+        else:
+            batch = preprocessor.batch(window)
+        chunks.append(predict_tensor_batch(bundle, batch))
     return np.concatenate(chunks, axis=0)
 
 

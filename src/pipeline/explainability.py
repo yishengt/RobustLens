@@ -167,9 +167,7 @@ def _jet_colormap(values: np.ndarray) -> np.ndarray:
     return (np.stack([red, green, blue], axis=-1) * 255.0).astype(np.uint8)
 
 
-def overlay_heatmap(
-    image: Image.Image, heatmap: np.ndarray, alpha: float = 0.45
-) -> np.ndarray:
+def overlay_heatmap(image: Image.Image, heatmap: np.ndarray, alpha: float = 0.45) -> np.ndarray:
     """Blend a heatmap over the image, returning an ``HxWx3`` uint8 array."""
 
     base = np.asarray(image.convert("RGB"), dtype=np.float32)
@@ -280,6 +278,31 @@ def explain(
             method="disabled",
             message="Grad-CAM is disabled in the configuration.",
         )
+    if bundle.input_kind == "dual":
+        # Both dual-input detectors take two separately preprocessed tensors at
+        # different resolutions, so a single-input Grad-CAM pass cannot attribute
+        # the score correctly. For the LoRA detector there is a second problem:
+        # gradients would have to flow through two adapted transformer branches
+        # and be fused across differing token grids, which no single heatmap can
+        # represent honestly. Report unavailable rather than draw a wrong map.
+        if bundle.architecture == "bombek_siglip2_dinov2":
+            reason = (
+                "Grad-CAM is unavailable for the Bombek1 SigLIP2+DINOv2 LoRA detector. "
+                "It scores two LoRA-adapted transformer branches on separately "
+                "preprocessed inputs (SigLIP2 at 384px, DINOv2 at 392px) with "
+                "different token grids, so no single attribution map can faithfully "
+                "represent both. A merged heatmap would be misleading."
+            )
+        else:
+            reason = (
+                "Grad-CAM is unavailable for the dual-backbone model because it "
+                "requires two processor-specific inputs."
+            )
+        return ExplanationResult(
+            available=False,
+            method="grad-cam",
+            message=f"{reason} Predictions, consistency and confidence are unaffected.",
+        )
 
     try:
         layer = find_target_layer(bundle.model, bundle.architecture)
@@ -290,9 +313,7 @@ def explain(
             )
         with GradCAM(bundle.model, layer) as cam:
             heatmap = cam(tensor.to(bundle.device))
-        overlay = overlay_heatmap(
-            image, heatmap, float(settings.get("overlay_alpha", 0.45))
-        )
+        overlay = overlay_heatmap(image, heatmap, float(settings.get("overlay_alpha", 0.45)))
         return ExplanationResult(
             available=True,
             method="grad-cam",

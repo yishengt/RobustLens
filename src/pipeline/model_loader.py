@@ -20,6 +20,15 @@ from src.utils.device import describe_device, device_from_config
 
 # Architectures small enough for a hackathon and far below the 2B parameter cap.
 SUPPORTED_ARCHITECTURES: Tuple[str, ...] = ("efficientnet_b0", "resnet18", "convnext_tiny")
+DUAL_BACKBONE_ARCHITECTURE = "dual_backbone"
+BOMBEK_ARCHITECTURE = "bombek_siglip2_dinov2"
+ALL_ARCHITECTURES: Tuple[str, ...] = SUPPORTED_ARCHITECTURES + (
+    DUAL_BACKBONE_ARCHITECTURE,
+    BOMBEK_ARCHITECTURE,
+)
+
+# Architectures that take two separately preprocessed pixel tensors.
+DUAL_INPUT_ARCHITECTURES: Tuple[str, ...] = (DUAL_BACKBONE_ARCHITECTURE, BOMBEK_ARCHITECTURE)
 MAX_PARAMETERS = 2_000_000_000
 
 SETUP_HINT = (
@@ -45,6 +54,8 @@ class ModelBundle:
     checkpoint_path: str
     ai_class_index: int = 1
     metadata: Dict[str, Any] = field(default_factory=dict)
+    input_kind: str = "single"
+    processors: Optional[Tuple[Any, Any]] = None
 
     def summary(self) -> Dict[str, Any]:
         """Return a JSON-serialisable description for logs and the demo UI."""
@@ -57,6 +68,7 @@ class ModelBundle:
             "under_2b_parameter_limit": self.num_parameters < MAX_PARAMETERS,
             "checkpoint_path": self.checkpoint_path,
             "device": describe_device(self.device),
+            "input_kind": self.input_kind,
         }
 
 
@@ -71,17 +83,28 @@ def normalise_architecture(name: str) -> str:
         "resnet_18": "resnet18",
         "convnext_tiny": "convnext_tiny",
         "convnexttiny": "convnext_tiny",
+        "dual_backbone": DUAL_BACKBONE_ARCHITECTURE,
+        "dual": DUAL_BACKBONE_ARCHITECTURE,
+        "siglip2_dinov2": DUAL_BACKBONE_ARCHITECTURE,
+        # The external Bombek1 LoRA detector is a distinct architecture; it is
+        # deliberately NOT an alias of dual_backbone.
+        "bombek_siglip2_dinov2": BOMBEK_ARCHITECTURE,
+        "bombek": BOMBEK_ARCHITECTURE,
+        "ensembleaidetector": BOMBEK_ARCHITECTURE,
     }
     if key not in aliases:
         raise ModelSetupError(
             f"Unsupported model architecture '{name}'. "
-            f"Supported architectures: {', '.join(SUPPORTED_ARCHITECTURES)}."
+            f"Supported architectures: {', '.join(ALL_ARCHITECTURES)}."
         )
     return aliases[key]
 
 
 def build_architecture(
-    name: str = "efficientnet_b0", num_classes: int = 1, pretrained: bool = False
+    name: str = "efficientnet_b0",
+    num_classes: int = 1,
+    pretrained: bool = False,
+    dual_config: Optional[Dict[str, Any]] = None,
 ) -> nn.Module:
     """Create a lightweight backbone with a fresh binary classification head.
 
@@ -92,6 +115,28 @@ def build_architecture(
 
     architecture = normalise_architecture(name)
     num_classes = int(num_classes)
+    if architecture == BOMBEK_ARCHITECTURE:
+        if num_classes != 1:
+            raise ModelSetupError(
+                "bombek_siglip2_dinov2 has a single binary output logit; "
+                f"got num_classes={num_classes}"
+            )
+        from src.models.bombek_siglip2_dinov2 import build_bombek_detector
+
+        return build_bombek_detector(dual_config or {}, pretrained_backbones=bool(pretrained))
+    if architecture == DUAL_BACKBONE_ARCHITECTURE:
+        if num_classes != 1:
+            raise ModelSetupError("dual_backbone currently supports one binary output logit only")
+        from src.models.dual_backbone import DualBackboneDetector
+
+        settings = dual_config or {}
+        return DualBackboneDetector(
+            siglip_name=str(settings.get("siglip_name", "google/siglip2-so400m-patch14-384")),
+            dinov2_name=str(settings.get("dinov2_name", "facebook/dinov2-large")),
+            hidden_dim=int(settings.get("hidden_dim", 3584)),
+            dropout=float(settings.get("dropout", 0.2)),
+            pretrained=bool(pretrained),
+        )
     if num_classes not in (1, 2):
         raise ModelSetupError(
             f"model.num_classes must be 1 (sigmoid) or 2 (softmax), got {num_classes}"
@@ -157,14 +202,13 @@ def _extract_state_dict(payload: Any) -> Dict[str, torch.Tensor]:
             "like a model checkpoint."
         )
 
-    # Strip wrapper prefixes left behind by DataParallel / Lightning.
-    cleaned: Dict[str, torch.Tensor] = {}
-    for key, value in candidate.items():
-        name = str(key)
-        for prefix in ("module.", "model."):
-            if name.startswith(prefix):
-                name = name[len(prefix) :]
-        cleaned[name] = value
+    # Strip wrapper prefixes left behind by DataParallel / Lightning, but only
+    # when every key carries the prefix. Stripping per-key would corrupt
+    # architectures with a legitimate top-level "model." submodule.
+    cleaned: Dict[str, torch.Tensor] = {str(k): v for k, v in candidate.items()}
+    for prefix in ("module.", "model."):
+        if cleaned and all(key.startswith(prefix) for key in cleaned):
+            cleaned = {key[len(prefix) :]: value for key, value in cleaned.items()}
     return cleaned
 
 
@@ -177,6 +221,22 @@ def infer_num_classes(state_dict: Dict[str, torch.Tensor]) -> Optional[int]:
             return int(tensor.numel())
         if key.endswith("weight") and tensor.dim() == 2 and tensor.shape[0] in (1, 2):
             return int(tensor.shape[0])
+    return None
+
+
+def detect_architecture(state_dict: Dict[str, torch.Tensor]) -> Optional[str]:
+    """Identify an architecture from its state-dict key signature.
+
+    Returns ``None`` when the keys are not distinctive, leaving the configured
+    or recorded architecture in charge. Only signatures that cannot collide are
+    reported here -- the point is to make a correct strict load possible, never
+    to guess.
+    """
+
+    from src.models.bombek_siglip2_dinov2 import looks_like_bombek_state_dict
+
+    if looks_like_bombek_state_dict(state_dict):
+        return BOMBEK_ARCHITECTURE
     return None
 
 
@@ -202,9 +262,7 @@ def load_model(
     if path.stat().st_size == 0:
         raise ModelSetupError(f"Model checkpoint is empty (0 bytes): {path}\n{SETUP_HINT}")
 
-    torch_device = (
-        torch.device(device) if device is not None else device_from_config(config)
-    )
+    torch_device = torch.device(device) if device is not None else device_from_config(config)
 
     try:
         payload = _load_payload(path, torch_device)
@@ -222,24 +280,97 @@ def load_model(
         if isinstance(value, (str, int, float, bool))
     }
 
-    # A checkpoint may record what it was trained as; that wins over the config.
-    architecture = str(
+    # Some checkpoints (including Bombek1's) carry a nested "config" mapping
+    # describing the backbones and LoRA hyper-parameters they were built with.
+    checkpoint_config: Dict[str, Any] = {}
+    if isinstance(payload, dict) and isinstance(payload.get("config"), dict):
+        checkpoint_config = dict(payload["config"])
+        metadata.update(
+            {
+                key: value
+                for key, value in checkpoint_config.items()
+                if isinstance(value, (str, int, float, bool))
+            }
+        )
+
+    # Resolve the architecture. Tensor evidence beats any recorded label: the
+    # state-dict signature is what strict loading will actually be judged
+    # against, and it lets a Bombek1 checkpoint be used with the stock config.
+    detected = detect_architecture(state_dict)
+    declared = (
         metadata.get("model_name")
         or metadata.get("architecture")
         or model_config.get("name", "efficientnet_b0")
     )
+    if detected is not None:
+        architecture = detected
+        metadata["detected_architecture"] = detected
+        try:
+            declared_canonical = normalise_architecture(str(declared))
+        except ModelSetupError:
+            declared_canonical = None
+        if declared_canonical is not None and declared_canonical != detected:
+            metadata["configured_architecture_overridden"] = str(declared)
+    else:
+        architecture = str(declared)
+
     num_classes = infer_num_classes(state_dict) or int(model_config.get("num_classes", 1))
 
-    model = build_architecture(architecture, num_classes=num_classes, pretrained=False)
+    canonical = normalise_architecture(architecture)
+    if canonical == BOMBEK_ARCHITECTURE:
+        # The checkpoint carries complete backbone weights, so building the
+        # towers from the hub first would download ~3 GB only to overwrite it.
+        dual_settings = dict(model_config.get("bombek", {}) or {})
+        dual_settings.update(checkpoint_config)
+        use_pretrained_backbones = False
+    else:
+        dual_settings = dict(model_config.get("dual", {}) or {})
+        if isinstance(payload, dict):
+            for key in ("siglip_name", "dinov2_name", "hidden_dim", "dropout"):
+                if key in payload:
+                    dual_settings[key] = payload[key]
+        use_pretrained_backbones = bool(
+            dual_settings.get(
+                "pretrained",
+                model_config.get("pretrained", canonical == DUAL_BACKBONE_ARCHITECTURE),
+            )
+        )
+    try:
+        model = build_architecture(
+            architecture,
+            num_classes=num_classes,
+            pretrained=use_pretrained_backbones,
+            dual_config=dual_settings,
+        )
+    except ModelSetupError:
+        raise
+    except Exception as exc:
+        raise ModelSetupError(
+            f"Could not construct '{architecture}' from its configured backbones: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    if canonical == BOMBEK_ARCHITECTURE:
+        # Reconcile the transformers 4.x/5.x SigLIP layout before strict loading.
+        from src.models.bombek_siglip2_dinov2 import align_checkpoint_keys
+
+        state_dict, alignment_notes = align_checkpoint_keys(state_dict, model)
+        if alignment_notes:
+            metadata["checkpoint_key_alignment"] = " ".join(alignment_notes)
 
     try:
         model.load_state_dict(state_dict, strict=True)
     except RuntimeError as exc:
+        summary = ""
+        if canonical == BOMBEK_ARCHITECTURE:
+            from src.models.bombek_siglip2_dinov2 import describe_state_dict_mismatch
+
+            summary = f"\nKey comparison: {describe_state_dict_mismatch(state_dict, model)}"
         raise ModelSetupError(
             f"Checkpoint '{path}' does not match architecture "
-            f"'{normalise_architecture(architecture)}' with {num_classes} output class(es).\n"
+            f"'{canonical}' with {num_classes} output class(es).\n"
             f"Set model.name in your config to the architecture the checkpoint was "
-            f"trained with (one of {', '.join(SUPPORTED_ARCHITECTURES)}).\n"
+            f"trained with (one of {', '.join(ALL_ARCHITECTURES)}).{summary}\n"
             f"Details: {exc}"
         ) from exc
 
@@ -256,13 +387,37 @@ def load_model(
     for parameter in model.parameters():
         parameter.requires_grad_(False)
 
+    processors = None
+    input_kind = "single"
+    if canonical in DUAL_INPUT_ARCHITECTURES:
+        try:
+            if canonical == BOMBEK_ARCHITECTURE:
+                from src.models.bombek_siglip2_dinov2 import build_bombek_processors
+
+                processors = build_bombek_processors(dual_settings)
+            else:
+                from src.models.dual_backbone import build_processors
+
+                processors = build_processors(
+                    str(dual_settings.get("siglip_name", "google/siglip2-so400m-patch14-384")),
+                    str(dual_settings.get("dinov2_name", "facebook/dinov2-large")),
+                )
+        except Exception as exc:
+            raise ModelSetupError(
+                f"Could not load the image processors for '{canonical}': "
+                f"{type(exc).__name__}: {exc}. Check transformers installation and network access."
+            ) from exc
+        input_kind = "dual"
+
     return ModelBundle(
         model=model,
         device=torch_device,
-        architecture=normalise_architecture(architecture),
+        architecture=canonical,
         num_classes=num_classes,
         num_parameters=num_parameters,
         checkpoint_path=str(path),
         ai_class_index=int(model_config.get("ai_class_index", 1)),
         metadata=metadata,
+        input_kind=input_kind,
+        processors=processors,
     )

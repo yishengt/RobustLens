@@ -31,54 +31,267 @@ warning sign, and the pipeline surfaces it rather than hiding it.
                              │
                     ┌────────▼────────┐
                     │   Validation    │  exists · format · not corrupted
-                    │    (stage 2)    │  dimensions · opens · RGB-convertible
+                    │                 │  dimensions · opens · RGB-convertible
                     └────────┬────────┘
                              │  full-resolution RGB image + metadata
-                    ┌────────▼─────────────┐
-                    │  Transformation      │  JPEG ×4 · blur ×3 · resize ×2
-                    │  generation (st. 4)  │  noise ×3 · jitter · crop
-                    └────────┬─────────────┘
-                             │  15 image versions (original + 14)
                     ┌────────▼────────┐
-                    │  Preprocessing  │  RGB · 224×224 · normalize · tensor
-                    │    (stage 3)    │  identical for every version
+                    │  Preprocessing  │  RGB · resize · normalize · tensor
+                    │                 │  identical for every image version
                     └────────┬────────┘
                              │
-                    ┌────────▼─────────────┐
-                    │  Feature extraction  │  lightweight CNN backbone
-                    │  + classification    │  → p(AI) per version
-                    │  (stages 5-6)        │
-                    └────────┬─────────────┘
-                             │  15 predictions
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
-│  Consistency    │ │  Optional freq. │ │  Explainability │
-│  (stage 7)      │ │  analysis (9)   │ │  (stage 11)     │
-│ mean·min·max    │ │ FFT·DCT·hipass  │ │ Grad-CAM heatmap│
-│ std·range·score │ │ noise residual  │ │ + charts        │
-└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-         │                   │                   │
-         └─────────┬─────────┘                   │
-                   │                             │
-          ┌────────▼────────┐                    │
-          │  Fusion (st. 8) │  0.7·original + 0.3·mean(transformed)
-          └────────┬────────┘                    │
-                   │                             │
-          ┌────────▼────────┐                    │
-          │ Confidence (10) │  decisiveness · agreement · consistency
-          └────────┬────────┘                    │
-                   └──────────┬──────────────────┘
-                              │
-                       ┌──────▼──────┐
-                       │ Final output│  label · p(AI) · p(real)
-                       │             │  confidence · consistency
-                       └─────────────┘
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+┌───────▼────────┐  ┌────────▼────────┐  ┌────────▼─────────┐
+│  Whole-image   │  │  Patch-level    │  │  Transformation  │
+│   detection    │  │   detection     │  │     testing      │
+│                │  │ overlapping     │  │ JPEG ×4 · blur ×3│
+│  p(AI) for the │  │ tiles → per-    │  │ resize ×2 · noise│
+│  entire frame  │  │ patch p(AI)     │  │ ×3 · jitter·crop │
+└───────┬────────┘  └────────┬────────┘  └────────┬─────────┘
+        │                    │                    │
+        │            heatmap + top regions   14 transformed
+        │                    │               predictions
+        │                    │                    │
+        │                    │           ┌────────▼────────┐
+        │                    │           │   Consistency   │
+        │                    │           │ mean·min·max·std│
+        │                    │           │ range · score   │
+        │                    │           └────────┬────────┘
+        │                    │                    │
+        └──────────┬─────────┴────────────────────┘
+                   │
+          ┌────────▼─────────┐
+          │  Fusion          │  0.60 · whole image
+          │                  │  0.20 · transformed mean
+          │                  │  0.20 · patch evidence
+          └────────┬─────────┘  (missing terms are dropped and
+                   │             the rest renormalised)
+          ┌────────▼─────────┐
+          │   Confidence     │  decisiveness · version agreement
+          │                  │  consistency · patch agreement
+          └────────┬─────────┘
+                   │
+          ┌────────▼─────────┐
+          │ Explainability   │  patch heatmap · charts
+          └────────┬─────────┘  (Grad-CAM where the model supports it)
+                   │
+           ┌───────▼────────┐
+           │  Final output  │  label · p(AI) · p(real) · confidence
+           │                │  consistency · highest-risk region
+           └────────────────┘
 ```
 
-Every transformation is applied to the **original full-resolution image**, then
-put through exactly the same preprocessing as the original. This mirrors how
-images degrade in the wild, rather than degrading an already-downsampled thumbnail.
+Transformations are applied to the **original full-resolution image**, then put
+through exactly the same preprocessing as the original. This mirrors how images
+degrade in the wild, rather than degrading an already-downsampled thumbnail.
+
+### Why whole-image detection is not enough
+
+A whole-image score answers *"is this picture synthetic?"*. It is much weaker at
+*"was one region of this otherwise real photo replaced?"* — a single edited
+object is averaged away across the whole frame, so a locally manipulated image
+can score as confidently authentic.
+
+Patch-level detection addresses that directly: the image is tiled into
+overlapping patches, each patch goes through the **same** model and
+preprocessing as the full image, and the per-patch scores are reconstructed
+into a heatmap. A locally edited region can then raise the fused score even
+when the frame as a whole looks authentic.
+
+A hot patch means the detector responded strongly to that region. It is a
+**potentially manipulated region worth a human look — not proof that the region
+was edited.**
+
+---
+
+## Quickstart
+
+Every command below is copy-pastable from the repository root and calls
+`./.venv/bin/python` directly, so you never need to activate the virtualenv.
+
+### 1. Install dependencies
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
+```
+
+### 2. Download the detector checkpoint
+
+2.11 GB, roughly 8 minutes. `-C -` resumes if the connection drops, so it is
+safe to re-run.
+
+```bash
+mkdir -p models/pretrained
+curl -L --fail --progress-bar -C - \
+  https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt \
+  -o models/pretrained/pytorch_model.pt
+```
+
+Check it arrived intact — the size must be exactly `2105483083`:
+
+```bash
+ls -l models/pretrained/pytorch_model.pt
+```
+
+### 3. Run your first prediction
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir data/cifake_sample \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --config configs/config.yaml \
+  --no-transformations \
+  --output outputs/cifake_predictions.json
+
+cat outputs/cifake_predictions.json
+```
+
+Expected shape (`pred` is the AI-generated probability):
+
+```json
+[
+  {
+    "image_path": "/abs/path/to/data/cifake_sample/0000.jpg",
+    "pred": 0.009768
+  }
+]
+```
+
+`image_path` is absolute by default. Add `--relative-paths` to write paths
+relative to `--input-dir` instead:
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir data/cifake_sample \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --no-transformations \
+  --relative-paths \
+  --output outputs/cifake_predictions.json
+```
+
+No config edit is needed. The loader identifies this checkpoint from its tensor
+signature and selects `bombek_siglip2_dinov2` automatically, overriding
+`model.name` in the config.
+
+### 4. Launch the web demo
+
+```bash
+./.venv/bin/streamlit run app.py
+```
+
+**One manual step:** the sidebar defaults to `checkpoints/best.pt`, which does
+not exist, so the app opens on *"Model setup required"*. Paste this into the
+sidebar's **Model checkpoint** field:
+
+```
+models/pretrained/pytorch_model.pt
+```
+
+To make the default work instead, link it once:
+
+```bash
+ln -s ../models/pretrained/pytorch_model.pt checkpoints/best.pt
+```
+
+---
+
+## Common tasks
+
+All paths are relative to the repository root.
+
+### Score a folder of images
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir path/to/your/images \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --no-transformations \
+  --output outputs/predictions.json
+```
+
+### Get the full report (label, confidence, per-transformation scores)
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir path/to/your/images \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --no-transformations \
+  --output outputs/predictions.json \
+  --detailed-output outputs/detailed.json
+```
+
+### Run the full robustness sweep
+
+Drops `--no-transformations`, so all 15 image versions are scored and
+`transform_consistency` becomes meaningful. Roughly 110 s per image on CPU.
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir data/cifake_sample \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --output outputs/predictions.json \
+  --detailed-output outputs/detailed.json
+```
+
+### Get labelled evaluation data
+
+Download a ~2 GB sample of SID_Set, then unpack it into class folders:
+
+```bash
+./.venv/bin/python scripts/download_dataset.py --split validation --shards 4 --yes
+./.venv/bin/python scripts/extract_dataset.py
+```
+
+That writes `data/extracted/sid_set/{real,ai_generated}/` plus a `labels.json`
+manifest. For a smaller balanced sample:
+
+```bash
+./.venv/bin/python scripts/extract_dataset.py --per-class-limit 100
+```
+
+### Benchmark accuracy and robustness
+
+```bash
+./.venv/bin/python scripts/evaluate_dataset.py \
+  --data-dir data/sid_set \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --limit 200 \
+  --output outputs/benchmark.json
+```
+
+### Run the checks
+
+```bash
+./.venv/bin/python -m pytest tests/ -q
+./.venv/bin/python -m ruff check src scripts app.py tests
+```
+
+---
+
+## Runtime expectations
+
+The detector is 740 M parameters, so it is not instant on CPU:
+
+| Operation | CPU time |
+|---|---|
+| One-time model load | ~14 s |
+| Per image, `--no-transformations` | ~7 s |
+| Per image, full 15-version sweep | ~110 s |
+
+`--device cpu` is the tested path. `--device mps` (Apple GPU) and
+`--device cuda` are wired up but **untested with this checkpoint's bfloat16
+SigLIP weights** — if either errors or returns NaNs, fall back to CPU.
+
+Two behaviours to expect, both intentional:
+
+- **Grad-CAM reports "unavailable"** for this model. Attribution would have to
+  cross two LoRA-adapted branches at different resolutions with different token
+  grids, so the pipeline returns an explanation instead of a misleading
+  heatmap. Probability, label, confidence and consistency are unaffected.
+- **`explainability` is `null` in batch JSON.** Batch mode skips it for speed;
+  the Streamlit path populates it.
 
 ---
 
@@ -86,8 +299,15 @@ images degrade in the wild, rather than degrading an already-downsampled thumbna
 
 ```bash
 python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
+```
+
+Activating the virtualenv is optional; every command in this README calls
+`./.venv/bin/python` directly. If you prefer to activate it:
+
+```bash
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
-python3 -m pip install -r requirements.txt
 ```
 
 Requires Python 3.9+. Torch is selected automatically for your platform;
@@ -111,11 +331,13 @@ Supported backbones, all far below the 2B parameter limit:
 | `efficientnet_b0` |     ~5.3 M | `features[-1]` |
 | `resnet18`        |    ~11.7 M | `layer4`       |
 | `convnext_tiny`   |    ~28.6 M | `features[-1]` |
+| `dual_backbone`   |     ~740 M | two processor-specific inputs |
+| `bombek_siglip2_dinov2` | 740.4 M | unavailable (two LoRA branches) |
 
 To test the plumbing before a real checkpoint exists:
 
 ```bash
-python scripts/make_dummy_checkpoint.py --output checkpoints/dummy.pt
+./.venv/bin/python scripts/make_dummy_checkpoint.py --output checkpoints/dummy.pt
 ```
 
 This writes **untrained** weights. It proves the wiring works; its predictions
@@ -124,12 +346,54 @@ EfficientNet-B0 is numerically dead in eval mode — its feature map collapses t
 a standard deviation of ~1e-14 and every image returns an identical score,
 which would mask real bugs.
 
+For a trained SigLIP2 + DINOv2 checkpoint, set `model.name: dual_backbone` in
+`configs/config.yaml` (or ensure the checkpoint records that architecture).
+The loader uses the separate SigLIP2 and DINOv2 image processors automatically;
+see [`models/README.md`](models/README.md) for the checkpoint contract.
+
+### Real pretrained detector (Bombek1 SigLIP2 + DINOv2 LoRA)
+
+The one trained checkpoint this repo is wired to use out of the box comes from
+[Bombek1/ai-image-detector-siglip-dinov2](https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2).
+Download it yourself (2.11 GB):
+
+```bash
+mkdir -p models/pretrained
+curl -L --fail --progress-bar \
+  https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt \
+  -o models/pretrained/pytorch_model.pt
+```
+
+Then run it with the stock config — the loader recognises the checkpoint from
+its tensor signature and selects the right architecture automatically:
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir data/cifake_sample \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --config configs/config.yaml \
+  --no-transformations \
+  --output outputs/cifake_predictions.json
+```
+
+This is a **different architecture** from the native `dual_backbone`
+(PEFT-wrapped SigLIP2, timm DINOv2, LoRA on both branches, a 512/256 head).
+It is registered separately as `bombek_siglip2_dinov2` and loads strictly;
+see [`models/README.md`](models/README.md) for the full key-level comparison.
+
 ---
 
 ## Streamlit demo
 
 ```bash
-streamlit run app.py
+./.venv/bin/streamlit run app.py
+```
+
+The sidebar defaults to `checkpoints/best.pt`. If your checkpoint is elsewhere,
+paste its path into the **Model checkpoint** field, for example:
+
+```
+models/pretrained/pytorch_model.pt
 ```
 
 Upload one JPG/JPEG/PNG/WEBP image to see:
@@ -140,18 +404,24 @@ Upload one JPG/JPEG/PNG/WEBP image to see:
 - the confidence level and the transformation-consistency score
 - a per-version prediction table and bar chart
 - a drift chart showing which transformations moved the score most
+- a **patch-risk heatmap** with the highest-risk regions outlined and tabulated
 - a Grad-CAM heatmap (or a clear message if unavailable)
-- the full JSON result
+- a **Download detailed JSON** button
+- the compact report schema and the full JSON result
+
+The demo shows an explicit notice when probabilities are uncalibrated, and
+clear messages for a missing checkpoint, an unsupported or corrupted image, and
+any unavailable explainability component.
 
 ---
 
 ## Batch inference
 
 ```bash
-python scripts/run_inference.py \
-    --input-dir path/to/images \
-    --checkpoint checkpoints/best.pt \
-    --output outputs/predictions.json
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir path/to/images \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --output outputs/predictions.json
 ```
 
 Useful flags:
@@ -185,7 +455,42 @@ probability in `[0, 1]`:
 ]
 ```
 
-The detailed format (`--detailed-output`) adds:
+The detailed format (`--detailed-output`) is a **superset**: it keeps every
+field above and adds the report schema plus the full diagnostic detail.
+
+The report fields, as surfaced in the demo's "Compact report schema" panel:
+
+```json
+{
+  "image_path": "images/example.jpg",
+  "raw_probability": 0.86,
+  "final_probability": 0.84,
+  "real_probability": 0.16,
+  "label": "Likely AI-generated",
+  "confidence": "high",
+  "transformation_consistency": 0.84,
+  "estimated_manipulation_severity": "medium",
+  "highest_risk_region": {
+    "index": 1, "x": 320, "y": 80, "width": 160, "height": 160, "score": 0.91
+  },
+  "per_transformation_predictions": {
+    "clean": 0.86, "jpeg_q30": 0.79, "blur_s2": 0.76, "center_crop_80": 0.82
+  }
+}
+```
+
+`raw_probability` is the uncalibrated model score; `final_probability` is the
+fused value and always equals `pred`. `per_transformation_predictions` reports
+the untransformed image as `clean`. `highest_risk_region` is `null` when patch
+analysis did not run.
+
+The detailed record additionally carries `patch_analysis` (every patch's
+coordinates and score, `heatmap_coverage`, and the settings used),
+`fusion_detail` (weights, components and any `fallback_reason`),
+`confidence_detail`, `consistency_detail`, `metadata`, `explainability` and
+`errors`.
+
+The remaining legacy fields:
 
 ```json
 [
@@ -217,6 +522,72 @@ The detailed format (`--detailed-output`) adds:
 
 Images that fail validation appear in the detailed output with `"pred": null`
 and a populated `errors` array. A single bad file never aborts a batch run.
+
+---
+
+## Patch-level analysis
+
+Tiles the image into overlapping patches, scores each through the same model and
+preprocessing as the full image, and reconstructs a risk heatmap.
+
+### Cost
+
+**Every patch is a full forward pass.** With the 740 M-parameter detector that
+is ~7 s per patch on CPU, so a 12-patch image takes about two minutes. Because
+of this:
+
+- batch inference has patches **off by default**; opt in with `--patches`
+- `patches.max_patches` caps the grid; larger grids are evenly subsampled
+- the Streamlit demo runs them on the single uploaded image
+
+```bash
+./.venv/bin/python scripts/run_inference.py \
+  --input-dir path/to/images \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --patches \
+  --output outputs/predictions.json \
+  --detailed-output outputs/detailed.json
+```
+
+### Settings
+
+All under `patches` in `configs/config.yaml`:
+
+| Key | Default | Meaning |
+|---|---:|---|
+| `enabled` | `true` | master switch |
+| `patch_size` | `256` | window size in original-image pixels |
+| `stride` | `192` | `< patch_size` produces overlapping patches |
+| `min_patch_size` | `64` | below this the image is too small to tile |
+| `max_patches` | `12` | hard cap; larger grids are evenly subsampled |
+| `top_k` | `3` | how many highest-risk patches to report |
+| `heatmap_threshold` | `0.5` | highlight cut-off in the demo |
+| `evidence_statistic` | `top_k_mean` | `top_k_mean`, `max` or `mean` |
+
+`evidence_statistic` chooses the single number fed to fusion. `top_k_mean` is
+the default because a bare `max` over many patches drifts upward simply as the
+maximum of many noisy scores, which inflates false positives on authentic
+images.
+
+### When patch analysis is skipped
+
+It degrades to a clear message and the whole-image result is unaffected when:
+
+- `patches.enabled` is false;
+- the image is smaller than `min_patch_size` on either side;
+- the image fits in a **single** patch — one whole-image tile would only repeat
+  the whole-image score, and feeding that back as independent "patch evidence"
+  would double-count one measurement and make patch agreement trivially 1.0;
+- a patch forward pass fails.
+
+### Reading the heatmap
+
+Regions no patch scored are left **untinted**, not drawn cold. An unmeasured
+area must not read as "confidently authentic", so the demo reports the covered
+fraction whenever it is below 100 %.
+
+A warm patch means the detector responded strongly there. That is evidence
+about where the model looked — **not proof that the region was edited.**
 
 ---
 
@@ -271,37 +642,84 @@ machine-specific; relative paths resolve against the project root.
 
 ### Fusion
 
-Default:
+Default mode, `whole_patch_transform`:
 
 ```
-final = 0.7 × original + 0.3 × mean(transformed)
+final = 0.60 · whole_image
+      + 0.20 · mean(transformed versions)
+      + 0.20 · patch_evidence
 ```
 
-Optional frequency mode (`fusion.mode: frequency`):
+Whole-image scoring carries the most weight because it is what the model was
+trained to produce. The transformed mean rewards predictions that survive
+redistribution. The patch term lets a locally edited region raise the score on
+an image that looks authentic overall.
 
-```
-final = 0.5 × rgb + 0.3 × frequency + 0.2 × transformation_consistency
-```
+**Every term degrades safely.** If patch analysis is unavailable — disabled, the
+image is too small to tile, or a patch pass failed — its weight is dropped and
+the remaining weights are renormalised (0.75 / 0.25) rather than treating the
+missing evidence as a zero. The same applies when there are no transformed
+versions. The reason is recorded in `fusion_detail.fallback_reason`.
 
-Frequency mode never activates on its own. Without a trained frequency
-classifier it falls back to the default formula and records the reason in
-`fusion_detail.fallback_reason`. Note that the consistency term in this formula
-is a stability measure, not a probability of being AI-generated; it is included
-because the task specifies these weights, but treat it as a tie-breaker rather
-than evidence.
+Two other modes remain available. `rgb_transform` is the simpler two-term
+formula (`0.7 · original + 0.3 · mean(transformed)`), and `frequency` adds a
+frequency-model term when one is configured; without it, fusion falls back and
+records why.
+
+All weights live under `fusion` in `configs/config.yaml`.
 
 ### Confidence
 
 ```
-score = 0.4 × decisiveness + 0.3 × agreement + 0.3 × consistency
+score = 0.35 · decisiveness
+      + 0.25 · version agreement
+      + 0.25 · transformation consistency
+      + 0.15 · patch agreement
 ```
 
-where *decisiveness* is `2 × |p − 0.5|`, *agreement* is the share of versions
-landing on the same side of the threshold as the original, and *consistency* is
-the transformation-consistency score. Scores map to High (≥0.70),
-Medium (≥0.45) and Low. An `Uncertain` verdict is never reported as High.
+*Decisiveness* is `2 × |p − 0.5|`. *Version agreement* is the share of image
+versions landing on the same side of the threshold as the original.
+*Consistency* is the transformation-consistency score. *Patch agreement* is the
+share of patches agreeing with the whole-image verdict.
 
----
+Scores map to High (≥0.70), Medium (≥0.45) and Low. An `Uncertain` verdict is
+never reported as High confidence.
+
+When patch analysis did not run, its weight is dropped and the rest are
+renormalised — a missing signal never counts as disagreement.
+
+### Uncertainty and the three-way decision
+
+The pipeline deliberately supports three outcomes rather than a binary call:
+
+| AI probability | Label |
+|---|---|
+| below `labels.authentic_max` | Likely authentic |
+| in between | **Uncertain — send for human review** |
+| at or above `labels.ai_min` | Likely AI-generated |
+
+The defaults (0.40 / 0.60) are **interface defaults, not statistically derived
+thresholds**. Replace them with values fitted on labelled validation data:
+
+```bash
+./.venv/bin/python scripts/calibrate_threshold.py \
+  --data-dir data/sid_set \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --target-fpr 0.01
+```
+
+That fits Platt calibration on clean validation images, selects a threshold at
+a target false-positive rate, and writes both to `outputs/calibration.json`.
+Until you do this, the reported probability is an **uncalibrated model score**
+and the demo says so.
+
+### Estimated manipulation severity
+
+`estimated_manipulation_severity` reports how much the score moved under the
+transformation battery — `low`, `medium` or `high`. It is a statement about
+**observable transformation sensitivity** only. It does **not** claim how many
+times an image was edited, re-uploaded, or passed through a platform; that
+history is not recoverable from a single image.
 
 ## Optional frequency / noise analysis
 
@@ -325,15 +743,15 @@ no token required).
 
 ```bash
 # See what is available (140 GB total, so download selectively)
-python scripts/download_dataset.py --list
+./.venv/bin/python scripts/download_dataset.py --list
 
 # ~2 GB evaluation sample: 4 validation shards, ~3,500 images
-python scripts/download_dataset.py --split validation --shards 4
+./.venv/bin/python scripts/download_dataset.py --split validation --shards 4
 
 # Benchmark a checkpoint
-python scripts/evaluate_dataset.py \
+./.venv/bin/python scripts/evaluate_dataset.py \
     --data-dir data/sid_set \
-    --checkpoint checkpoints/best.pt \
+  --checkpoint models/pretrained/pytorch_model.pt \
     --limit 300 \
     --output outputs/benchmark.json
 ```
@@ -355,12 +773,12 @@ from clean labelled validation images. The fitted parameters are saved and
 loaded during inference. Calibration does not use transformed images, test
 images, or demo uploads.
 
-Fit once after placing a trained checkpoint at `checkpoints/best.pt`:
+Fit once, against a checkpoint you have already downloaded:
 
 ```bash
-python scripts/calibrate_threshold.py \
+./.venv/bin/python scripts/calibrate_threshold.py \
   --data-dir data/sid_set \
-  --checkpoint checkpoints/best.pt \
+  --checkpoint models/pretrained/pytorch_model.pt \
   --config configs/config.yaml \
   --output outputs/calibration.json \
   --report outputs/calibration_report.json
@@ -414,7 +832,8 @@ distribution or checkpoint changes.
 ## Testing
 
 ```bash
-python -m pytest tests/ -q          # or: python -m unittest discover -s tests
+./.venv/bin/python -m pytest tests/ -q
+./.venv/bin/python -m ruff check src scripts app.py tests
 ```
 
 195 tests cover validation (valid, invalid, corrupted, truncated, RGB
@@ -482,6 +901,19 @@ neither a checkpoint nor the torch stack.
 
 Please read this section before quoting any number from this system.
 
+- **Patch analysis localises attention, not editing.** A hot patch shows where
+  the detector responded strongly. It does **not** prove that region was
+  edited, and the system does not segment or verify edits.
+- **Processing history is not recoverable.** `estimated_manipulation_severity`
+  describes how much the score moved under our transformation battery. The
+  system cannot reconstruct how many platforms, uploads, editing tools or
+  compression passes an image actually went through, and does not claim to.
+- **Probabilities are uncalibrated by default.** Until
+  `scripts/calibrate_threshold.py` has been run on labelled validation data,
+  the reported number is a raw model score, and the 0.40 / 0.60 label bands are
+  interface defaults rather than thresholds derived from data.
+- **The WildFake demonstration subset must not be used** for training, model
+  selection, or threshold selection. It is reserved for evaluation.
 - **Image-level detection only.** The pipeline returns one probability per
   image. It does not localise manipulated regions, and it does not process
   video or audio.
