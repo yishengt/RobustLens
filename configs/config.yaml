@@ -108,6 +108,32 @@ calibration:
   # badly, which is what a small validation set does to threshold selection.
   operating_point: balanced
 
+# --- Stage 8b: evidence-driven abstention ---------------------------------
+# A probability band alone cannot catch the measured failure mode: accumulated
+# transformations push scores DOWNWARD for every origin, so a degraded fake
+# leaves the uncertain band out of the bottom and is reported as confidently
+# authentic. These rules withdraw the claim instead. Abstention never flips an
+# image to the opposite class -- it only reports Uncertain.
+#
+# Thresholds must be fitted on validation data only:
+#   python scripts/select_abstention_thresholds.py
+abstention:
+  enabled: false               # off until thresholds are fitted for a checkpoint
+  borderline_margin: 0.05      # |p - threshold| below this is too close to call
+  max_transformed_drift: 0.25  # AI-like clean score falling this far => Uncertain
+  min_consistency: 0.30        # score instability across transformations
+  min_agreement: 0.60          # share of versions agreeing with the original
+  min_patch_coverage: 0.25     # only applied when patch analysis actually ran
+  abstain_on_evidence_errors: false
+  rules:
+    - borderline_probability
+    - clean_to_transformed_drift
+    - low_transformation_consistency
+    - transformed_versions_cross_the_threshold
+    - low_agreement_between_versions
+    - insufficient_patch_coverage
+    - evidence_unavailable
+
 # --- Stage 7: transformation consistency ----------------------------------
 # consistency = 1 - (std_weight * std/std_reference + range_weight * range/range_reference)
 # clamped to [0, 1]; 1.0 means the prediction barely moved under transformation.
@@ -129,7 +155,7 @@ patches:
   # top_k          coarse grid, then refine only the top-k regions
   # uncertain_only run base_mode ONLY when the whole-image score is undecided;
   #                confident images stop early and spend zero patch passes
-  mode: uncertain_only
+  mode: coarse
   base_mode: full              # what uncertain_only runs when it does run
   uncertain_band: [0.2, 0.8]   # the "undecided" range of the whole-image score
   patch_size: 256              # window size in original-image pixels
@@ -176,6 +202,17 @@ frequency:
   enabled: false
   checkpoint: null
   fft_bins: 16
+
+# --- Evaluation claims ----------------------------------------------------
+evaluation:
+  generator_generalisation:
+    # SID_Set has no per-generator identity field, so a true unseen-generator
+    # holdout is not established. Enabling this without both fields below is a
+    # configuration error rather than silently treating source classes as
+    # generator identities.
+    enabled: false
+    generator_label_field: null
+    holdout_generators: []
 
 # --- Stage 10: confidence scoring -----------------------------------------
 confidence:

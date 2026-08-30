@@ -15,7 +15,7 @@ from src.evaluation.calibration import (
     search_thresholds,
 )
 from src.evaluation.metrics import compute_metrics
-from tests.helpers import base_config, write_mock_checkpoint
+from tests.helpers import base_config, make_image, write_mock_checkpoint
 
 
 class CalibrationTest(unittest.TestCase):
@@ -243,6 +243,10 @@ class CalibrationStatusTest(unittest.TestCase):
         self.assertEqual(status["label_bands_source"], "interface default")
         self.assertIsNone(status["method"])
 
+        detailed = self.build(config).analyse_image(make_image()).as_detailed_dict()
+        self.assertIsNone(detailed["calibrated_probability"])
+        self.assertEqual(detailed["probability_kind"], "fused uncalibrated model score")
+
     def test_calibrated_state_reports_data_derived_threshold(self) -> None:
         rng = np.random.default_rng(3)
         labels = np.concatenate([np.zeros(80), np.ones(80)]).astype(int)
@@ -282,6 +286,13 @@ class CalibrationStatusTest(unittest.TestCase):
         self.assertIn("f1_optimal", status["threshold_source"])
         self.assertAlmostEqual(status["threshold"], selection.f1_optimal, places=6)
         self.assertIn("data-derived", status["label_bands_source"])
+
+        detailed = self.build(config).analyse_image(make_image()).as_detailed_dict()
+        self.assertIsNotNone(detailed["calibrated_probability"])
+        self.assertEqual(
+            detailed["probability_kind"],
+            "fused score from calibrated per-view probabilities",
+        )
 
     def test_unknown_operating_point_falls_back_to_balanced(self) -> None:
         rng = np.random.default_rng(4)

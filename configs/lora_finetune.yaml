@@ -1,0 +1,83 @@
+# Fine-tuning configuration for the existing Bombek1 SigLIP2 + DINOv2 LoRA
+# checkpoint. Relative paths are resolved from the project root.
+
+model:
+  checkpoint: models/pretrained/pytorch_model.pt
+  output_adapter: models/adapters/local_edit_lora
+  parameter_limit: 2000000000
+  bombek:
+    siglip_model: google/siglip2-so400m-patch14-384
+    dinov2_model: vit_large_patch14_dinov2.lvd142m
+    image_size: 392
+    lora_rank: 32
+    lora_alpha: 64
+    lora_dropout: 0.1
+    hidden_dim: 512
+    classifier_dropout: 0.3
+
+lora:
+  # These are documentation defaults. The existing checkpoint's embedded
+  # settings win when it is restored; no second adapter is added.
+  rank: 8
+  alpha: 16
+  dropout: 0.05
+  bias: none
+  train_classifier: true
+
+training:
+  mode: head_only                 # start here; use lora after validating it
+  epochs: 2
+  lora_learning_rate: 0.0001
+  classifier_learning_rate: 0.001
+  batch_size: 2
+  gradient_accumulation_steps: 4
+  early_stopping_patience: 2
+  selection_metric: f1            # f1 or balanced_accuracy
+  selection_threshold: 0.5
+  weight_decay: 0.0
+  seed: 42
+  # [] keeps training clean. Examples: [jpeg_90, blur_0.5, color_jitter]
+  official_transformations: []
+
+  # Transformation-invariant training. Two independently transformed views of
+  # each training image are scored, and the loss penalises disagreement between
+  # them:  total = classification + weight * consistency
+  # Classification stays the primary objective. weight: 0 (or enabled: false)
+  # reproduces the original loss exactly. Needs official_transformations to be
+  # non-empty, otherwise the two views would be identical.
+  consistency:
+    enabled: false
+    weight: 0.5
+    method: mse            # mse (on logits) | kl (symmetric, on probabilities)
+    # Only compare views that share a label. A source and its edited copy share
+    # a group but not a label, and forcing those to agree would train the model
+    # to ignore the edit it exists to detect.
+    same_label_pairs_only: true
+
+data:
+  train_dir: data/local_edits/train
+  validation_dir: data/local_edits/validation
+  test_dir: data/local_edits/test
+  masks_dir: masks
+  extensions: [".jpg", ".jpeg", ".png", ".webp"]
+  num_workers: 0
+  strict_images: false
+  # Byte-identical files carrying contradictory labels are excluded from
+  # training AND validation by default. The audit does not guess which side is
+  # correct, so both sides go. Review outputs/data_quality/quarantine.json by
+  # hand before setting this to true.
+  include_conflicting_labels: false
+  quarantine_path: outputs/data_quality/quarantine.json
+  # Fully synthetic images mixed into training so the detector does not forget
+  # its existing whole-image capability while learning local edits. Leave the
+  # directory null to train on local edits alone.
+  synthetic_mixture_dir: null
+  synthetic_mixture_fraction: 0.25
+
+evaluation:
+  recalibrate_after_training: true
+  old_threshold: 0.69
+
+outputs:
+  directory: outputs/lora_finetune
+  feature_cache_dir: outputs/lora_finetune/feature_cache

@@ -6,7 +6,7 @@ Launch with::
 
 Upload one image to see the final classification, the AI and real
 probabilities, the confidence level, the transformation-consistency score, the
-per-transformation predictions, and a Grad-CAM heatmap where available.
+per-transformation predictions, and the patch-level risk map.
 """
 
 from __future__ import annotations
@@ -246,28 +246,11 @@ def render_patches(result: PipelineResult) -> None:
         use_container_width=True,
     )
     st.caption(
-        "A warm patch means the detector responded strongly to that region. It is "
-        "a potentially manipulated region worth a human look - not proof that the "
-        "region was edited."
+        "A warm patch means the whole-image detector responded strongly when that "
+        "crop was shown to it. This is an explainability aid, not an edit "
+        "segmentation mask or a probability that the region was edited. Treat a "
+        "highlight as a region worth human review, never as proof of manipulation."
     )
-
-
-def render_explainability(result: PipelineResult) -> None:
-    """Show the Grad-CAM overlay, or the reason it is unavailable."""
-
-    st.subheader("Suspicious-region heatmap")
-    explanation = result.explanation
-    if explanation is None:
-        st.info("Explainability was not run for this image.")
-        return
-    if explanation.available and explanation.overlay is not None:
-        left, right = st.columns(2)
-        if result.original_image is not None:
-            left.image(result.original_image, caption="Original", use_container_width=True)
-        right.image(explanation.overlay, caption="Grad-CAM overlay", use_container_width=True)
-        st.caption(explanation.message)
-    else:
-        st.warning(explanation.message)
 
 
 def render_errors(result: PipelineResult) -> None:
@@ -355,8 +338,6 @@ def main() -> None:
     render_patches(result)
     st.divider()
     render_charts(result)
-    st.divider()
-    render_explainability(result)
     render_errors(result)
 
     render_calibration_status(pipeline)

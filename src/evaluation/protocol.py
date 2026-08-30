@@ -455,6 +455,39 @@ def generator_claim_statement() -> str:
     )
 
 
+def validate_generator_generalisation_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Refuse a true generator-holdout run when generator labels are absent.
+
+    SID_Set's source classes describe broad generation processes, not generator
+    identities. An explicit opt-in therefore requires both a generator label
+    field and named holdout values; otherwise proceeding would fabricate the
+    experiment the configuration claims to run.
+    """
+
+    section = ((config.get("evaluation", {}) or {}).get("generator_generalisation", {}) or {})
+    if not bool(section.get("enabled", False)):
+        return {
+            "enabled": False,
+            "status": "not_established",
+            "reason": generator_claim_statement(),
+        }
+    label_field = section.get("generator_label_field")
+    holdout = section.get("holdout_generators") or []
+    if not label_field or not holdout:
+        raise ValueError(
+            "Generator generalisation cannot be enabled for SID_Set: it has no "
+            "per-generator labels. Configure a dataset with "
+            "evaluation.generator_generalisation.generator_label_field and one or "
+            "more holdout_generators; generation-process classes are not a substitute."
+        )
+    return {
+        "enabled": True,
+        "status": "configured",
+        "generator_label_field": str(label_field),
+        "holdout_generators": list(holdout),
+    }
+
+
 def dataset_holdout_statement(training_dataset: Optional[str]) -> str:
     """Whether the dataset-source holdout is genuine, based on checkpoint metadata."""
 

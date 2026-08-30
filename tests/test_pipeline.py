@@ -162,6 +162,16 @@ class PipelineBehaviourTest(PipelineTestBase):
         second = self.pipeline.analyse_path(path)
         self.assertAlmostEqual(first.ai_probability, second.ai_probability, places=6)
 
+    def test_metadata_presence_cannot_change_the_prediction(self) -> None:
+        """Absent EXIF/metadata is never interpreted as synthetic evidence."""
+
+        image = make_image(seed=21)
+        with_metadata = image.copy()
+        with_metadata.info["exif"] = b"synthetic test metadata"
+        without = self.pipeline.analyse_image(image)
+        with_info = self.pipeline.analyse_image(with_metadata)
+        self.assertEqual(without.ai_probability, with_info.ai_probability)
+
     def test_invalid_image_raises_through_analyse_path(self) -> None:
         corrupted = write_corrupted_image(self.tmp / "images")
         with self.assertRaises(ImageValidationError):
@@ -199,6 +209,23 @@ class PipelineBehaviourTest(PipelineTestBase):
         # No frequency model is configured, so it must report that, not invent one.
         self.assertTrue(any(error["stage"] == "frequency" for error in result.errors))
         self.assertEqual(result.fusion.mode, "rgb_transform")
+
+    def test_diagnostic_frequency_features_have_zero_effect_on_prediction(self) -> None:
+        image = make_image(seed=88)
+        baseline_config = base_config()
+        baseline = DetectionPipeline.from_checkpoint(
+            self.checkpoint, baseline_config, device="cpu", explain_images=False
+        ).analyse_image(image)
+
+        diagnostic_config = base_config()
+        diagnostic_config["frequency"]["enabled"] = True
+        diagnostic = DetectionPipeline.from_checkpoint(
+            self.checkpoint, diagnostic_config, device="cpu", explain_images=False
+        ).analyse_image(image)
+
+        self.assertIsNotNone(diagnostic.frequency_features)
+        self.assertEqual(diagnostic.fusion.mode, "rgb_transform")
+        self.assertEqual(diagnostic.ai_probability, baseline.ai_probability)
 
     def test_grayscale_image_flows_through(self) -> None:
         result = self.pipeline.analyse_image(make_image(mode="L"))

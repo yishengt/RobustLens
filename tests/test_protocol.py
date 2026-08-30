@@ -32,6 +32,7 @@ from src.evaluation.protocol import (
     select_fixed_threshold,
     split_records,
     subgroup_metrics,
+    validate_generator_generalisation_config,
     variant_metrics,
     variant_probability,
 )
@@ -287,6 +288,29 @@ class ClaimTest(unittest.TestCase):
         known = dataset_holdout_statement("OpenFake (shards 0-14)").lower()
         self.assertIn("genuine", known)
         self.assertIn("per-generator generalisation may not", known)
+
+    def test_generator_evaluation_is_not_established_by_default(self) -> None:
+        status = validate_generator_generalisation_config({})
+        self.assertFalse(status["enabled"])
+        self.assertEqual(status["status"], "not_established")
+
+    def test_generator_evaluation_without_labels_is_a_configuration_error(self) -> None:
+        config = {"evaluation": {"generator_generalisation": {"enabled": True}}}
+        with self.assertRaisesRegex(ValueError, "no per-generator labels"):
+            validate_generator_generalisation_config(config)
+
+    def test_generator_evaluation_requires_named_holdouts(self) -> None:
+        config = {
+            "evaluation": {
+                "generator_generalisation": {
+                    "enabled": True,
+                    "generator_label_field": "generator_id",
+                    "holdout_generators": [],
+                }
+            }
+        }
+        with self.assertRaisesRegex(ValueError, "holdout_generators"):
+            validate_generator_generalisation_config(config)
 
 
 class CacheTest(unittest.TestCase):

@@ -31,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input-dir", required=True, help="Directory of images to analyse")
     parser.add_argument("--checkpoint", default="checkpoints/best.pt", help="Model checkpoint")
+    parser.add_argument(
+        "--adapter-dir",
+        default=None,
+        help="Optional RobustLens adapter directory applied after loading the base checkpoint",
+    )
     parser.add_argument("--config", default="configs/config.yaml", help="YAML configuration")
     parser.add_argument("--output", default="outputs/predictions.json", help="Simple JSON output")
     parser.add_argument(
@@ -49,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-transformations",
         action="store_true",
         help="Score the original image only, skipping the robustness transforms",
+    )
+    parser.add_argument(
+        "--no-calibration",
+        action="store_true",
+        help="Disable calibration fitted for a different checkpoint",
     )
     parser.add_argument(
         "--frequency",
@@ -116,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
         config.setdefault("inference", {})["threshold"] = float(args.threshold)
     if args.no_transformations:
         config.setdefault("transformations", {})["enabled"] = False
+    if args.no_calibration:
+        config.setdefault("calibration", {})["enabled"] = False
     if args.frequency:
         config.setdefault("frequency", {})["enabled"] = True
     # Patch analysis costs one forward pass per patch on every image, so batch
@@ -131,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         report = run_batch(
             image_dir=input_dir,
             checkpoint_path=resolve_config_path(config, args.checkpoint),
+            adapter_dir=(resolve_config_path(config, args.adapter_dir) if args.adapter_dir else None),
             config=config,
             output_path=resolve_config_path(config, args.output),
             detailed_output_path=(

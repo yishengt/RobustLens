@@ -1,11 +1,90 @@
 # Robust Detection of AI-Generated Images Under Real-World Transformations
 
-An **inference-only** pipeline that estimates whether an image is AI-generated,
+The default workflow is an **inference-only** pipeline that estimates whether an image is AI-generated,
 and — more importantly — whether that estimate *survives* the things that
 happen to images in the real world: JPEG recompression, blurring, downscaling,
 noise, colour edits and cropping.
 
-The project loads an existing trained checkpoint. It does not train models.
+The validated path loads an existing trained checkpoint. Experimental
+fine-tuning modules are present, but their training/evaluation results are
+intentionally deferred and are not part of the claims below.
+
+---
+
+## Current validated scope (30 August 2026)
+
+The checked workflow is the existing-checkpoint inference and evaluation path.
+Local-edit fine-tuning, the empirical consistency-loss training ablation, and
+post-fine-tuning recalibration are intentionally **deferred**. No fine-tuning
+metrics are claimed in this repository state.
+
+The non-training closeout is reproducible and currently reports:
+
+- **470 tests passed, 337 subtests passed, 1 platform-dependent JPEG test
+  skipped**; Ruff, compilation, and import checks pass.
+- The simple prediction JSON remains exactly `{image_path, pred}`. Timestamps
+  and diagnostic fields appear only in the separate detailed output.
+- The data-quality audit inspected 25,337 local-edit files and found six
+  byte-identical conflicting-label pairs: five in train and one in test. Both
+  sides are quarantined (12 files); the audit found zero exact cross-split
+  duplicates and one near-duplicate pair.
+- A repository file-container probe now normalizes both classes to one format
+  and measures score/decision drift at a frozen threshold. The current 16+16
+  SID_Set control retained AUC 1.000 after both classes were uniformly
+  re-encoded as JPEG; 31/32 decisions were preserved, with mean absolute score
+  drift 0.0192. This weakens that specific extension/container shortcut
+  hypothesis, but does not rule out compression-history or other shortcuts.
+- The deterministic cached chain evaluation was re-analysed on 12 images at
+  the fixed calibrated threshold 0.69. Generation depth 5 produced the largest
+  mean downward score drift (−0.0956); depth 10 drifted −0.0870. Recall fell
+  from 0.625 clean to 0.500 for both depths.
+- The abstention sweep kept its pre-registered 1.5× minimum error-enrichment
+  and 35% maximum abstention-rate bars. No candidate passed, so the selected
+  setting abstains on 0/48 validation and 0/72 held-out images. This negative
+  result is retained; thresholds were not weakened to manufacture a pass.
+- Spectral features are diagnostic-only. A focused pipeline test proves that
+  enabling their extraction has zero effect on the predicted probability.
+- True unseen-generator generalisation is **not established**: SID_Set has no
+  per-generator labels. Enabling that evaluation without a generator label
+  field and explicit holdouts now raises a configuration error.
+
+### Reproduce the validated checks
+
+```bash
+# Data quarantine and shortcut probes
+./.venv/bin/python scripts/audit_dataset_quality.py
+./.venv/bin/python scripts/evaluate_format_shortcuts.py \
+  --authentic-dir data/extracted/sid_set/real \
+  --synthetic-dir data/extracted/sid_set/ai_generated \
+  --per-class-limit 16 --output-format JPEG --device cpu
+
+# Re-analyse the existing deterministic chain scores without model forwards
+./.venv/bin/python scripts/evaluate_chains.py --reuse-scores
+
+# Repository validation
+./.venv/bin/python -m pytest -q
+./.venv/bin/ruff check src scripts app.py tests
+./.venv/bin/python -m compileall -q src scripts app.py tests
+
+# Live demo
+./.venv/bin/streamlit run app.py
+```
+
+### Tasks 1–11
+
+| Task | Status in this tree |
+|---|---|
+| 1 — pipeline validation/integration | **Complete for the non-training path**: demo startup, output contract, patch wording, and current-model integration verified |
+| 2 — local-edit fine-tuning | **Deferred intentionally**; no training result claimed |
+| 3 — transformation-invariant objective/ablation | Loss and deterministic chain infrastructure exist; the empirical training ablation table is **deferred with fine-tuning** |
+| 4 — abstention | **Partial**: safe withdrawal mechanics are complete, but validation fitting selected no active rule and chain fitting remains absent |
+| 5 — spectral cleanup | **Optional diagnostic-only**; zero prediction effect is tested |
+| 6 — transformation and chain robustness | **Complete for the current model** at one frozen threshold; chain sample remains small (n=12) |
+| 7 — generator generalisation | **Not established**; SID_Set lacks per-generator labels and invalid configuration fails clearly |
+| 8 — repository tests | **Complete**: leakage, duplicates, quarantine, format, chains, contract, and safety tests pass |
+| 9 — demo/UI explainability | **Complete**: live startup verified; patch heat is explicitly not segmentation or proof |
+| 10 — post-fine-tuning recalibration | **Deferred with fine-tuning**; existing pre-registered threshold remains frozen |
+| 11 — audit/reproducibility | **Complete for the present non-training scope** in this README and `AUDIT.md` |
 
 ---
 
@@ -98,9 +177,9 @@ preprocessing as the full image, and the per-patch scores are reconstructed
 into a heatmap. A locally edited region can then raise the fused score even
 when the frame as a whole looks authentic.
 
-A hot patch means the detector responded strongly to that region. It is a
-**potentially manipulated region worth a human look — not proof that the region
-was edited.**
+A hot patch means the whole-image detector responded strongly when that crop
+was shown to it. It is an explainability aid, **not an edit-segmentation mask,
+not a probability that the region was edited, and never proof of manipulation.**
 
 ---
 
@@ -547,7 +626,10 @@ The detailed record additionally carries `patch_analysis` (every patch's
 coordinates and score, `heatmap_coverage`, and the settings used),
 `fusion_detail` (weights, components and any `fallback_reason`),
 `confidence_detail`, `consistency_detail`, `metadata`, `explainability` and
-`errors`.
+`errors`. Its `calibrated_probability` is the calibrated **clean-view** score,
+or `null` when no calibrator is loaded. `pred`/`final_probability` is the fused
+score and is described separately by `probability_kind`; calibration is not
+falsely claimed to have been fitted after fusion.
 
 The remaining legacy fields:
 
@@ -1004,10 +1086,10 @@ outputs/protocol/
 
 ### What these results may and may not claim
 
-**Dataset-source holdout — genuine.** The checkpoint records training on
-OpenFake; evaluation runs on SID_Set, a different dataset with different
-collection procedures. Cross-dataset generalisation may be claimed at the
-sample size actually evaluated.
+**Dataset-source holdout — not verifiable.** The loaded checkpoint metadata in
+the cached protocol run does not identify its training dataset. SID_Set overlap
+therefore cannot be ruled out, and no dataset-source generalisation claim is
+made. A README statement or filename is not accepted as checkpoint provenance.
 
 **Unseen generator — NOT established.** SID_Set does not publish per-generator
 labels. The protocol reports `full_synthetic` and `tampered` as *generation-process
@@ -1450,7 +1532,8 @@ Please read this section before quoting any number from this system.
 - **Hackathon-scale proof of concept.** Not a production moderation system, and
   deliberately not a platform-wide one.
 - **The model must have fewer than 2 billion parameters**, enforced at load
-  time. The supported backbones are 5–29 M parameters.
+  time. The verified Bombek1 dual-backbone checkpoint has 740.37 M parameters;
+  the optional torchvision backbones are smaller.
 - **Accuracy depends entirely on the supplied checkpoint.** This repository
   contributes robustness measurement and a reproducible pipeline, not a model.
 - **The WildFake validation subset must not be used for training.** It is

@@ -21,6 +21,7 @@ from PIL import Image
 
 from src.evaluation.calibration import ProbabilityCalibrator
 from src.pipeline import frequency as frequency_module
+from src.pipeline.abstention import AbstentionDecision, evaluate_abstention
 from src.pipeline.confidence import ConfidenceReport, compute_confidence
 from src.pipeline.consistency import (
     ConsistencyReport,
@@ -69,6 +70,7 @@ class PipelineResult:
     explanation: Optional[ExplanationResult] = None
     frequency_features: Optional[Dict[str, Any]] = None
     patches: Optional[PatchReport] = None
+    abstention: Optional[AbstentionDecision] = None
     manipulation_severity: str = "low"
     errors: List[Dict[str, Any]] = field(default_factory=list)
     original_image: Optional[Image.Image] = None
@@ -87,13 +89,27 @@ class PipelineResult:
         raw_probability = (
             original.raw_probability if original and original.raw_probability is not None else None
         )
+        per_view_calibrated = bool(original and original.calibrated)
         return {
             "image_path": self.image_path,
             "pred": round(float(self.ai_probability), 6),
             "raw_probability": round(float(raw_probability), 6)
             if raw_probability is not None
             else None,
-            "calibrated_probability": round(float(self.ai_probability), 6),
+            # Calibration is applied to each image version before fusion.  The
+            # fused score is therefore reported separately as `pred` /
+            # `final_probability`; it must not be relabelled as though a
+            # post-fusion calibrator had been fitted.
+            "calibrated_probability": (
+                round(float(original.ai_probability), 6)
+                if original is not None and per_view_calibrated
+                else None
+            ),
+            "probability_kind": (
+                "fused score from calibrated per-view probabilities"
+                if per_view_calibrated
+                else "fused uncalibrated model score"
+            ),
             "label": self.label,
             "confidence": self.confidence.level,
             "threshold_used": round(float(self.threshold_used), 6),
@@ -125,6 +141,7 @@ class PipelineResult:
             ),
             "per_transformation_predictions": self.per_transformation_predictions(),
             "patch_analysis": self.patches.as_dict() if self.patches is not None else None,
+            "abstention": self.abstention.as_dict() if self.abstention is not None else None,
         }
 
     def per_transformation_predictions(self) -> Dict[str, float]:
@@ -156,6 +173,10 @@ class PipelineResult:
                 self.patches.highest_risk_region if self.patches is not None else None
             ),
             "per_transformation_predictions": self.per_transformation_predictions(),
+            "abstained": bool(self.abstention.abstain) if self.abstention else False,
+            "abstention_reasons": (
+                self.abstention.triggered_rules if self.abstention else []
+            ),
         }
 
 
@@ -183,6 +204,7 @@ class FailedResult:
             "highest_risk_region": None,
             "per_transformation_predictions": {},
             "patch_analysis": None,
+            "abstention": None,
         }
 
 
@@ -437,6 +459,30 @@ class DetectionPipeline:
         final_probability = float(fusion.final_probability)
         label = label_for_probability(final_probability, self.config)
 
+        # Stage 8b: evidence-driven abstention. The probability bands alone
+        # cannot catch an image whose score collapsed because it was degraded
+        # rather than because it is authentic, so the rules look at the drift,
+        # the stability and the coverage behind the number. Abstention only ever
+        # withdraws a claim; it never flips the image to the opposite class.
+        abstention = evaluate_abstention(
+            label=label,
+            final_probability=final_probability,
+            threshold=binary_threshold(self.config),
+            clean_probability=original_prediction.ai_probability,
+            transformed_probabilities=[p.ai_probability for p in transformed_predictions],
+            consistency_score=consistency.consistency_score,
+            agreement=consistency.agreement,
+            patch_coverage=(
+                float(patch_report.coverage.mean())
+                if patch_report.available and patch_report.coverage is not None
+                else None
+            ),
+            patch_available=patch_report.available,
+            errors=errors,
+            config=self.config,
+        )
+        label = abstention.label
+
         # Stage 10: confidence.
         confidence = compute_confidence(
             final_probability,
@@ -468,6 +514,7 @@ class DetectionPipeline:
             explanation=explanation,
             frequency_features=frequency_features,
             patches=patch_report,
+            abstention=abstention,
             manipulation_severity=manipulation_severity,
             errors=errors,
             original_image=original_image,

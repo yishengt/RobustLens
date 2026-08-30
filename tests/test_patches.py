@@ -100,6 +100,17 @@ class PatchGeometryTest(unittest.TestCase):
         boxes = generate_patch_boxes(2000, 2000, 128, 64, max_patches=7)
         self.assertLessEqual(len(boxes), 7)
 
+    def test_four_nine_and_sixteen_patch_budgets_are_supported(self) -> None:
+        """The required budgets produce exactly that many spatial samples."""
+
+        for budget in (4, 9, 16):
+            with self.subTest(budget=budget):
+                boxes = generate_patch_boxes(
+                    2000, 2000, patch_size=256, stride=128, max_patches=budget
+                )
+                self.assertEqual(len(boxes), budget)
+                self.assertEqual(len(set(boxes)), budget)
+
     def test_image_below_minimum_yields_no_boxes(self) -> None:
         self.assertEqual(generate_patch_boxes(24, 24, 96, 64, min_patch_size=32), [])
 

@@ -38,12 +38,15 @@ class Prediction:
     label: str
     is_original: bool = False
     raw_probability: Optional[float] = None
+    calibrated: bool = False
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "ai_probability": round(float(self.ai_probability), 6),
-            "calibrated_probability": round(float(self.ai_probability), 6),
+            "calibrated_probability": (
+                round(float(self.ai_probability), 6) if self.calibrated else None
+            ),
             "raw_probability": round(
                 float(
                     self.raw_probability
@@ -211,6 +214,7 @@ def predict_variants(
             label=label_for_probability(float(probability), config),
             is_original=(name == ORIGINAL_KEY),
             raw_probability=float(raw_probability),
+            calibrated=calibrator is not None,
         )
         for name, probability, raw_probability in zip(names, probabilities, raw_probabilities)
     ]

@@ -1,6 +1,6 @@
 {
   "protocol": "TikTok TechJam 2026 Track 5",
-  "generated": "2026-08-29T23:17:36",
+  "generated": "2026-08-30T22:33:51",
   "model": {
     "architecture": "bombek_siglip2_dinov2",
     "num_classes": 1,
@@ -1147,7 +1147,12 @@
   },
   "claims": {
     "dataset_source_holdout": "The checkpoint records no training dataset, so it cannot be verified that the evaluation data was excluded from model development. No generalisation claim is made.",
-    "unseen_generator": "SID_Set does not publish per-generator labels, so this is a generation-process family split (fully synthetic vs locally tampered), not a true unseen-generator holdout. It shows whether performance transfers across generation processes within one dataset. A genuine unseen-generator claim requires a dataset with per-generator labels where the evaluated generator is excluded from model development."
+    "unseen_generator": "SID_Set does not publish per-generator labels, so this is a generation-process family split (fully synthetic vs locally tampered), not a true unseen-generator holdout. It shows whether performance transfers across generation processes within one dataset. A genuine unseen-generator claim requires a dataset with per-generator labels where the evaluated generator is excluded from model development.",
+    "generator_generalisation_configuration": {
+      "enabled": false,
+      "status": "not_established",
+      "reason": "SID_Set does not publish per-generator labels, so this is a generation-process family split (fully synthetic vs locally tampered), not a true unseen-generator holdout. It shows whether performance transfers across generation processes within one dataset. A genuine unseen-generator claim requires a dataset with per-generator labels where the evaluated generator is excluded from model development."
+    }
   },
   "configuration": {
     "transformations": {
@@ -1183,7 +1188,7 @@
     },
     "patches": {
       "enabled": true,
-      "mode": "uncertain_only",
+      "mode": "coarse",
       "base_mode": "full",
       "uncertain_band": [
         0.2,
