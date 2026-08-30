@@ -106,49 +106,57 @@ was edited.**
 
 ## Quickstart
 
-Every command below is copy-pastable from the repository root and calls
-`./.venv/bin/python` directly, so you never need to activate the virtualenv.
-
-### 1. Install dependencies
+### One command
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install --upgrade pip
-./.venv/bin/python -m pip install -r requirements.txt
+python3 scripts/setup.py --all
 ```
 
-### 2. Download the detector checkpoint
+That creates the virtualenv, installs `requirements.txt`, downloads the 2.11 GB
+model checkpoint (resuming if interrupted) and fetches a ~2 GB evaluation
+sample. It prompts before each large download; add `--yes` to skip prompts.
+Everything is idempotent, so re-running it is safe.
 
-2.11 GB, roughly 8 minutes. `-C -` resumes if the connection drops, so it is
-safe to re-run.
+Just the code and the model, no dataset:
 
 ```bash
-mkdir -p models/pretrained
-curl -L --fail --progress-bar -C - \
-  https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt \
-  -o models/pretrained/pytorch_model.pt
+python3 scripts/setup.py
 ```
 
-Check it arrived intact — the size must be exactly `2105483083`:
+### Check what you have
 
 ```bash
-ls -l models/pretrained/pytorch_model.pt
+python3 scripts/setup.py --check
 ```
 
-### 3. Run your first prediction
+```
+Project status
+------------------------------------------------------------------
+  OK       Virtualenv           Python 3.14.2
+  OK       Dependencies         all present
+  OK       Model checkpoint     2.0 GB, size verified
+  OK       Sample image         bundled
+  optional Evaluation dataset   not downloaded
+  optional Calibration          not fitted
+------------------------------------------------------------------
+```
+
+Anything missing prints the exact command that fixes it. Exit code is `0` when
+everything required is present, `1` otherwise, so it works in CI.
+
+### Run it
 
 ```bash
 ./.venv/bin/python scripts/run_inference.py \
   --input-dir data/cifake_sample \
   --checkpoint models/pretrained/pytorch_model.pt \
-  --config configs/config.yaml \
   --no-transformations \
-  --output outputs/cifake_predictions.json
+  --output outputs/predictions.json
 
-cat outputs/cifake_predictions.json
+cat outputs/predictions.json
 ```
 
-Expected shape (`pred` is the AI-generated probability):
+`pred` is the AI-generated probability:
 
 ```json
 [
@@ -159,41 +167,90 @@ Expected shape (`pred` is the AI-generated probability):
 ]
 ```
 
-`image_path` is absolute by default. Add `--relative-paths` to write paths
-relative to `--input-dir` instead:
+Paths are absolute by default; add `--relative-paths` for paths relative to
+`--input-dir`. No config edit is needed — the loader recognises the checkpoint
+from its tensor signature and selects `bombek_siglip2_dinov2` automatically.
 
-```bash
-./.venv/bin/python scripts/run_inference.py \
-  --input-dir data/cifake_sample \
-  --checkpoint models/pretrained/pytorch_model.pt \
-  --no-transformations \
-  --relative-paths \
-  --output outputs/cifake_predictions.json
-```
-
-No config edit is needed. The loader identifies this checkpoint from its tensor
-signature and selects `bombek_siglip2_dinov2` automatically, overriding
-`model.name` in the config.
-
-### 4. Launch the web demo
+### Web demo
 
 ```bash
 ./.venv/bin/streamlit run app.py
 ```
 
-**One manual step:** the sidebar defaults to `checkpoints/best.pt`, which does
-not exist, so the app opens on *"Model setup required"*. Paste this into the
-sidebar's **Model checkpoint** field:
+It defaults to the checkpoint `setup.py` downloads, so it works immediately.
 
-```
-models/pretrained/pytorch_model.pt
-```
+### On Apple Silicon
 
-To make the default work instead, link it once:
+Add `--device mps` to any command — it is about **8.9× faster** than CPU and
+was verified to produce matching probabilities.
+
+---
+
+## Manual setup
+
+If you would rather not use `setup.py`, or it fails on your platform:
+
+### 1. Dependencies
 
 ```bash
-ln -s ../models/pretrained/pytorch_model.pt checkpoints/best.pt
+python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
 ```
+
+Verified from scratch: a clean clone plus a clean virtualenv installed only
+from `requirements.txt` runs the full 375-test suite green.
+
+### 2. Model checkpoint (2.11 GB)
+
+```bash
+mkdir -p models/pretrained
+curl -L --fail --progress-bar -C - \
+  https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt \
+  -o models/pretrained/pytorch_model.pt
+```
+
+The size must be exactly `2105483083` bytes:
+
+```bash
+ls -l models/pretrained/pytorch_model.pt
+```
+
+### 3. Evaluation dataset (optional, ~2 GB)
+
+Only needed to reproduce the evaluation numbers; inference works without it.
+
+```bash
+./.venv/bin/python scripts/download_dataset.py --split validation --shards 4 --yes
+./.venv/bin/python scripts/extract_dataset.py          # unpack to image files
+```
+
+### 4. Calibration (optional)
+
+Needs the dataset. Without it, scores are uncalibrated and the demo says so.
+
+```bash
+./.venv/bin/python scripts/evaluate_confidence.py \
+  --save-calibration outputs/calibration.json
+```
+
+---
+
+## What is and is not in the repository
+
+| | In git? | How to get it |
+|---|---|---|
+| All source, tests, configs | yes | `git clone` |
+| Sample image (`data/cifake_sample/`) | yes | `git clone` |
+| Evaluation results (`outputs/protocol/`, `outputs/patch_ablation/`) | yes | `git clone` |
+| **Model checkpoint** (2.11 GB) | **no** | `scripts/setup.py --checkpoint` |
+| **Dataset** (~2 GB) | **no** | `scripts/setup.py --dataset` |
+| **Calibration parameters** | **no** | `scripts/evaluate_confidence.py` |
+
+The three large or machine-specific items are git-ignored deliberately: GitHub
+rejects files over 100 MB, and git keeps blobs forever once added. Every one of
+them has a one-command fetch, and the pipeline degrades with a clear message
+rather than crashing when any is absent.
 
 ---
 
@@ -324,7 +381,8 @@ CUDA, Apple MPS and CPU are all supported (`inference.device: auto`).
 **A trained checkpoint is required.** Without one, every entry point stops with
 an actionable setup error — the pipeline never fabricates predictions.
 
-Place your checkpoint at `checkpoints/best.pt`, or pass `--checkpoint`.
+The default is `models/pretrained/pytorch_model.pt`, where `scripts/setup.py`
+puts it. Override with `--checkpoint` or `paths.checkpoint_dir`.
 Full format details, supported architectures and the preprocessing contract are
 in [`models/README.md`](models/README.md).
 
@@ -393,12 +451,9 @@ see [`models/README.md`](models/README.md) for the full key-level comparison.
 ./.venv/bin/streamlit run app.py
 ```
 
-The sidebar defaults to `checkpoints/best.pt`. If your checkpoint is elsewhere,
-paste its path into the **Model checkpoint** field, for example:
-
-```
-models/pretrained/pytorch_model.pt
-```
+The sidebar defaults to `models/pretrained/pytorch_model.pt`, so the demo works
+with no manual step after `scripts/setup.py`. Point it elsewhere by editing the
+**Model checkpoint** field.
 
 Upload one JPG/JPEG/PNG/WEBP image to see:
 

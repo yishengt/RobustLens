@@ -46,6 +46,8 @@ class ProjectStructureTest(unittest.TestCase):
             "src/utils/config.py",
             "scripts/run_inference.py",
             "scripts/calibrate_threshold.py",
+            "scripts/setup.py",
+            "scripts/download_dataset.py",
         ]:
             with self.subTest(path=relative_path):
                 self.assertTrue((ROOT / relative_path).is_file(), relative_path)

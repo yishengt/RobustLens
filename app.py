@@ -36,7 +36,9 @@ from src.pipeline.validation import ImageValidationError  # noqa: E402
 from src.utils.config import load_config, resolve_config_path  # noqa: E402
 
 DEFAULT_CONFIG = "configs/config.yaml"
-DEFAULT_CHECKPOINT = "checkpoints/best.pt"
+# Defaults to the path scripts/setup.py downloads to, so the demo works with no
+# manual step. checkpoints/best.pt is still accepted if you keep one there.
+DEFAULT_CHECKPOINT = "models/pretrained/pytorch_model.pt"
 
 
 @st.cache_resource(show_spinner="Loading detector checkpoint...")
