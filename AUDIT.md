@@ -481,3 +481,158 @@ contract, and honest negative results for patches and abstention. Its most
 important weaknesses are local edits, missing independent channels, unknown
 checkpoint training provenance, and the absence of validated abstention under
 compound degradation.
+
+---
+
+# Addendum — remaining-task completion
+
+Everything in this section was executed in this tree. Each claim carries an
+evidence grade: **Verified** (ran here, reproducible), **Smoke-tested** (ran end
+to end on a deliberately tiny sample — proves the machinery, not the science),
+**Blocked** (prerequisite missing).
+
+> **Threshold provenance.** Results below use the frozen calibrated threshold
+> **0.69** unless stated. The fine-tuning comparison and consistency ablation
+> use **0.5**, because a fine-tuned head has no fitted threshold of its own and
+> reusing 0.69 would import a calibration fitted for a different model. Earlier
+> protocol numbers at **0.42** are *historical* and must not be compared with
+> either.
+
+## Local-edit fine-tuning — Smoke-tested, not adopted
+
+Head-only run completed end to end on `configs/lora_finetune_smoke.yaml`.
+
+| Split | Images | Groups | Subgroups |
+|---|---|---|---|
+| train | 68 | 25 | authentic 24, minor_edit 27, **synthetic replay 17** |
+| validation | 17 | 8 | authentic 8, minor_edit 9 |
+| test | 20 | 8 | authentic 8, minor_edit 12 |
+
+Replay mixture realised **exactly 0.250** of the train set and is **train-only** —
+validation and test contain no replay images.
+
+**Bug found and fixed:** the replay mixture was sized against the *pre-limit*
+train count (requesting 6,780 images for a 68-image run) and was added *before*
+the group limit. Since every replay image is its own group, the limit then
+discarded essentially all of them — the mixture silently contributed 0 images.
+The mixture is now sized and added after quarantine and the group limit settle
+the local-edit set. `max_groups_per_split` now explicitly caps **local-edit
+source groups only**; replay is governed by `synthetic_mixture_fraction`.
+
+### Integrity checks — Verified
+
+| Check | Result |
+|---|---|
+| Adapter save → reload determinism | **0.0** max score difference across two independent reloads |
+| Adapter actually changes predictions | Yes, max difference **0.2329** |
+| Original checkpoint SHA-256 | `caae0c00…30d4b` — **unchanged** before and after training |
+| Second LoRA adapter added | No — existing adapter tensors reused |
+
+### Original vs fine-tuned — Smoke-tested (threshold 0.5, n=20 held out)
+
+| Metric | Original | Fine-tuned | Δ |
+|---|---|---|---|
+| accuracy | 0.6000 | 0.6000 | +0.0000 |
+| balanced accuracy | 0.5000 | 0.5000 | +0.0000 |
+| F1 | 0.7500 | 0.7500 | +0.0000 |
+| recall | 1.0000 | 1.0000 | +0.0000 |
+| **AUROC** | 0.5104 | **0.3542** | **−0.1562** |
+| FPR | 1.0000 | 1.0000 | +0.0000 |
+| FNR | 0.0000 | 0.0000 | +0.0000 |
+
+**Decision: do NOT adopt.** Ranking quality got worse and nothing improved. Both
+models collapse to predicting every image AI-generated at threshold 0.5 on this
+20-image set — which is what 68 training images should be expected to produce.
+**These are machinery numbers, not evidence about the method.**
+
+## Consistency-loss ablation — Smoke-tested
+
+Three runs differing **only** in the loss. All variants saw two identically
+generated transformed views per image, including the baseline, so the comparison
+is controlled.
+
+| Variant | F1 | Recall | FPR | AUROC | Balanced acc | Runtime |
+|---|---|---|---|---|---|---|
+| classification only | 0.7500 | 1.0000 | 1.0000 | 0.4479 | 0.5000 | 250.0 s |
+| + logit-MSE consistency | 0.7500 | 1.0000 | 1.0000 | 0.4375 | 0.5000 | 122.5 s |
+| + symmetric-KL consistency | 0.7500 | 1.0000 | 1.0000 | 0.4479 | 0.5000 | 113.5 s |
+
+**Decision: keep classification-only.** Neither variant reached the
+pre-registered +0.01 gain in F1 or recall. The loss code is retained and tested
+but stays **disabled by default**.
+
+*Limitation:* at 68 training images this ablation cannot detect a real effect.
+It shows the machinery is correct and controlled, nothing more.
+
+## Abstention fitted on chains — Verified
+
+The single-transformation sweep selected nothing: drift and consistency rules
+fired on **0.000** of images at every threshold, because one transformation
+barely moves a score. Refitting on compound chains, with the **same
+pre-registered bars** (≥1.5× error enrichment, ≤35% abstention rate):
+
+| | Chain validation (n=24) | Chain held out (n=24) | Held out, abstention off |
+|---|---|---|---|
+| abstention rate | 0.292 | **0.125** | 0.000 |
+| accuracy among answered | 0.765 | **0.810** | 0.750 |
+| error enrichment | 1.90× | **2.67×** | — |
+
+**Three rules accepted and frozen** into `configs/config.yaml`:
+`borderline_margin 0.02`, `min_consistency 0.50`, `min_agreement 0.70`.
+
+Rules that still never reached the bar are left at settings they **cannot fire
+at** (`max_transformed_drift 1.0`, `boundary_crossing_fraction 2.0`) rather than
+tuned to look active. **The bars were not lowered.** Abstention is now
+`enabled: true`.
+
+## Leakage and shortcut tests — Verified
+
+`tests/test_leakage_confounds.py` (16 tests) plus the existing format probe.
+Covers exact duplicates, near-duplicates, group leakage, transformed-copy
+leakage, conflicting labels, and confounds in file format, resolution, aspect
+ratio and compression history, plus filename leakage.
+
+**Bug found and fixed:** `dataset_confounds` used `zip()` on paths and labels,
+which silently truncated to the shorter list and dropped images from the audit.
+A length mismatch is now an error.
+
+The SID_Set format confound is pinned by a test against the real data
+(full_synthetic **100% PNG**, real **0% PNG**) so the documented conclusion
+cannot drift from what the data looks like. Re-encoding both classes to a common
+format left AUC and separation unchanged, so the confound is present in the data
+but is **not** what the detector reads.
+
+## Patch explainability — Verified
+
+The demo shows the required sentence verbatim:
+
+> "A highlighted region is a suspicious region that influenced the model's
+> score. It is not proof of AI editing, a segmentation mask, or a reconstruction
+> of editing history."
+
+It also states that patch evidence carries **zero weight** in both probability
+and confidence. Coverage is displayed, unmeasured areas stay untinted, patches
+are skipped for confident images, and Grad-CAM unavailability is explained.
+Pinned by `tests/test_app_contract.py`.
+
+## Recalibration — Blocked
+
+No fine-tuned model was adopted, so there is nothing to recalibrate. The
+existing calibration and the frozen **0.69** threshold stand unchanged. Threshold
+`0.69` was **not** automatically reused for the fine-tuned comparison — that used
+0.5, since a calibration fitted for one model does not transfer to another.
+
+## Remaining limitations
+
+- Every fine-tuning number here is **smoke scale** (68 train / 20 test images). A
+  real run needs the full 20,330-image train split, which is a multi-hour job
+  that was not started without approval.
+- The consistency ablation cannot resolve a real effect at this sample size.
+- Chain abstention was fitted on 48 images split 24/24. The held-out gain
+  (0.750 → 0.810) rests on 24 images and needs confirmation at larger scale.
+- `moderate_edit` and `transformed` subgroups are **empty** in the current
+  dataset — the escher-vismin export provides only one edit severity, so
+  minor/moderate cannot yet be reported separately.
+- Masks remain absent for all 25,337 images, so heatmap-overlap evaluation
+  against ground-truth edit regions is still impossible.
+- True unseen-generator generalisation remains **not established**.

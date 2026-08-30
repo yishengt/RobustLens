@@ -30,7 +30,14 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--input-dir", required=True, help="Directory of images to analyse")
-    parser.add_argument("--checkpoint", default="checkpoints/best.pt", help="Model checkpoint")
+    # Defaults to where scripts/setup.py downloads the checkpoint, so the
+    # documented command works with no extra flags. checkpoints/best.pt is
+    # still accepted if you keep one there.
+    parser.add_argument(
+        "--checkpoint",
+        default="models/pretrained/pytorch_model.pt",
+        help="Model checkpoint",
+    )
     parser.add_argument(
         "--adapter-dir",
         default=None,

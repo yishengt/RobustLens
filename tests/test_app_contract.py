@@ -18,12 +18,36 @@ class PatchExplainabilityWordingTest(unittest.TestCase):
         self.assertNotIn("Suspicious-region heatmap", source)
         self.assertNotIn("render_explainability", source)
 
+    # The exact sentence the demo is required to show. Kept verbatim here so a
+    # reword cannot quietly soften the disclaimer.
+    REQUIRED_CAVEAT = (
+        "a highlighted region is a suspicious region that influenced the model's "
+        "score. it is not proof of ai editing, a segmentation mask, or a "
+        "reconstruction of editing history."
+    )
+
     def test_demo_disclaims_segmentation_and_proof(self) -> None:
+        """Source-level check on fragments.
+
+        The caveat is written across several adjacent string literals, so the
+        full sentence never appears contiguously in the source. The exact
+        wording is asserted against the RENDERED captions instead, in
+        test_rendered_patch_caption_contains_the_caveat.
+        """
+
         source = (ROOT / "app.py").read_text(encoding="utf-8").lower()
-        self.assertIn("not an edit", source)
-        self.assertIn("segmentation mask", source)
-        self.assertIn("never as proof of manipulation", source)
+        for fragment in (
+            "a highlighted region is a suspicious region that influenced the model",
+            "it is not proof of ai editing, a segmentation mask, or a",
+            "reconstruction of editing history.",
+        ):
+            self.assertIn(fragment, source)
         self.assertIn("nothing was measured there, not because they look authentic", source)
+
+    def test_demo_states_patch_evidence_carries_no_scoring_weight(self) -> None:
+        collapsed = " ".join((ROOT / "app.py").read_text(encoding="utf-8").lower().split())
+        self.assertIn("zero weight", collapsed)
+        self.assertIn("confidence score", collapsed)
 
     def test_rendered_patch_caption_contains_the_caveat(self) -> None:
         import app
@@ -57,10 +81,11 @@ class PatchExplainabilityWordingTest(unittest.TestCase):
         ):
             app.render_patches(result)
 
-        rendered = " ".join(captions).lower()
+        rendered = " ".join(" ".join(captions).lower().split())
         self.assertIn("nothing was measured there", rendered)
-        self.assertIn("not an edit segmentation mask", rendered)
-        self.assertIn("never as proof of manipulation", rendered)
+        for fragment in self.REQUIRED_CAVEAT.split(". "):
+            self.assertIn(fragment.rstrip("."), rendered)
+        self.assertIn("zero weight", rendered)
 
 
 class PredictionJsonContractTest(unittest.TestCase):

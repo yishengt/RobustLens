@@ -118,12 +118,25 @@ calibration:
 # Thresholds must be fitted on validation data only:
 #   python scripts/select_abstention_thresholds.py
 abstention:
-  enabled: false               # off until thresholds are fitted for a checkpoint
-  borderline_margin: 0.05      # |p - threshold| below this is too close to call
-  max_transformed_drift: 0.25  # AI-like clean score falling this far => Uncertain
-  min_consistency: 0.30        # score instability across transformations
-  min_agreement: 0.60          # share of versions agreeing with the original
-  min_patch_coverage: 0.25     # only applied when patch analysis actually ran
+  # Fitted on the chain-VALIDATION half only by
+  # scripts/select_abstention_on_chains.py, then frozen. The single-
+  # transformation sweep selected nothing (no rule reached the pre-registered
+  # 1.5x error-enrichment bar); compound chains are where the failure lives.
+  #
+  # Held-out chain result at these values:
+  #   abstains on 12.5% of images
+  #   accuracy among answered  0.750 -> 0.810
+  #   abstained images are 2.67x more error-prone than the population
+  # The 1.5x / 35% bars were NOT lowered to obtain this.
+  enabled: true
+  borderline_margin: 0.02      # accepted
+  min_consistency: 0.50        # accepted
+  min_agreement: 0.70          # accepted
+  # Never reached the bar on either single transforms or chains, so these stay
+  # at settings they cannot fire at rather than being tuned to look active.
+  max_transformed_drift: 1.0
+  boundary_crossing_fraction: 2.0
+  min_patch_coverage: 0.0
   abstain_on_evidence_errors: false
   rules:
     - borderline_probability

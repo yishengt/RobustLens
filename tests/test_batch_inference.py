@@ -198,7 +198,10 @@ class CommandLineInterfaceTest(unittest.TestCase):
         args = parser.parse_args(["--input-dir", "images"])
         self.assertEqual(args.input_dir, "images")
         self.assertEqual(args.output, "outputs/predictions.json")
-        self.assertEqual(args.checkpoint, "checkpoints/best.pt")
+        # Defaults to where scripts/setup.py downloads the checkpoint, so the
+        # documented command runs with no extra flags. Kept in step with
+        # app.py's DEFAULT_CHECKPOINT so the demo and the CLI agree.
+        self.assertEqual(args.checkpoint, "models/pretrained/pytorch_model.pt")
 
         with self.assertRaises(SystemExit):
             parser.parse_args([])

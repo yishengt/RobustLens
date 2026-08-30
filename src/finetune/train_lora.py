@@ -356,11 +356,6 @@ def _make_datasets(config: Dict[str, Any]) -> Tuple[Dict[str, LocalEditDataset],
             strict=strict,
         ),
     ]
-    synthetic_records, mixture_summary = _synthetic_mixture_records(
-        config, len(summaries[0].records), extensions, strict
-    )
-    summaries[0].records.extend(synthetic_records)
-    _refresh_summary(summaries[0])
     verify_split_groups(summaries)
 
     # Contradictory labels are removed before anything sees them, so the model
@@ -378,11 +373,33 @@ def _make_datasets(config: Dict[str, Any]) -> Tuple[Dict[str, LocalEditDataset],
         limited[summary.split] = _limit_summary_groups(summary, group_limit, seed)
         _refresh_summary(summary)
 
+    # The replay mixture is sized and added AFTER quarantine and the group limit
+    # have settled the local-edit train set. Sizing it against the pre-limit
+    # count would ask for thousands of replay images for a 24-group smoke run,
+    # and adding it before the limit would let the limit -- which selects whole
+    # groups, one per replay image -- discard almost all of them again.
+    synthetic_records, mixture_summary = _synthetic_mixture_records(
+        config, len(summaries[0].records), extensions, strict
+    )
+    summaries[0].records.extend(synthetic_records)
+    _refresh_summary(summaries[0])
+    # Re-check after the mixture lands: replay groups are train-only and carry
+    # their own prefix, so this must still hold.
+    verify_split_groups(summaries)
+
     transform = _training_transform(config)
     # Two transformed views per training image only when a consistency loss will
     # actually consume them; otherwise the extra forward passes buy nothing.
     consistency = consistency_settings(config)
-    views = 2 if (consistency["enabled"] and transform is not None) else 1
+    # Views default to whatever the consistency loss needs. An explicit
+    # training.views_per_image overrides that so an ablation can hold the views
+    # fixed across variants and change ONLY the loss term -- otherwise the
+    # baseline would see different data from the variants it is compared with.
+    configured_views = (config.get("training", {}) or {}).get("views_per_image")
+    if configured_views is None:
+        views = 2 if (consistency["enabled"] and transform is not None) else 1
+    else:
+        views = max(1, int(configured_views))
     datasets = {
         summary.split: LocalEditDataset(
             summary.root,

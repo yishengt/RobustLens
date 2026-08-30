@@ -5,18 +5,43 @@ and — more importantly — whether that estimate *survives* the things that
 happen to images in the real world: JPEG recompression, blurring, downscaling,
 noise, colour edits and cropping.
 
-The validated path loads an existing trained checkpoint. Experimental
-fine-tuning modules are present, but their training/evaluation results are
-intentionally deferred and are not part of the claims below.
+The validated path loads an existing trained checkpoint. Local-edit fine-tuning
+was implemented and **run at smoke scale**, then **rejected on measurement** —
+see below.
+
+### Submission documents
+
+| Document | Contents |
+|---|---|
+| **[`DEVPOST_SUBMISSION.md`](DEVPOST_SUBMISSION.md)** | Project description, solution, results, error analysis, limitations |
+| **[`FINAL_RESULTS.md`](FINAL_RESULTS.md)** | Every verified number with dataset, n, checkpoint, threshold and split |
+| **[`DEMO_SCRIPT.md`](DEMO_SCRIPT.md)** | 3-minute demo walkthrough |
+| **[`AUDIT.md`](AUDIT.md)** | Independent implementation audit and its follow-up work |
 
 ---
 
-## Current validated scope (30 August 2026)
+## Current validated scope
 
-The checked workflow is the existing-checkpoint inference and evaluation path.
-Local-edit fine-tuning, the empirical consistency-loss training ablation, and
-post-fine-tuning recalibration are intentionally **deferred**. No fine-tuning
-metrics are claimed in this repository state.
+The shipped workflow is the existing-checkpoint inference and evaluation path.
+
+**Adopted configuration:**
+
+| Setting | Value |
+|---|---|
+| Checkpoint | Bombek1 SigLIP2 + DINOv2 LoRA (**original**, unmodified) |
+| Fusion | `rgb_transform` — `0.7 · whole + 0.3 · mean(transformed)` |
+| Threshold | **0.69**, frozen across all conditions |
+| Patch evidence in scoring | **None** (zero probability and confidence weight) |
+| Abstention | **Enabled**, rules fitted on transformation chains |
+| Training | Classification-only; consistency loss disabled |
+
+**Fine-tuning was run and rejected.** A head-only local-edit fine-tune completed
+end to end, saved and reloaded bit-exactly, and left the original checkpoint
+byte-identical — but held-out AUROC fell from **0.510 to 0.354**, so the adapter
+was **not adopted**. That run used only 68 training and 20 test images: it
+demonstrates the machinery, and supports **no** conclusion about fine-tuning as
+a method. Because no fine-tuned model was adopted, **recalibration was not
+performed** and threshold 0.69 stands unchanged.
 
 The non-training closeout is reproducible and currently reports:
 
@@ -74,17 +99,31 @@ The non-training closeout is reproducible and currently reports:
 
 | Task | Status in this tree |
 |---|---|
-| 1 — pipeline validation/integration | **Complete for the non-training path**: demo startup, output contract, patch wording, and current-model integration verified |
-| 2 — local-edit fine-tuning | **Deferred intentionally**; no training result claimed |
-| 3 — transformation-invariant objective/ablation | Loss and deterministic chain infrastructure exist; the empirical training ablation table is **deferred with fine-tuning** |
-| 4 — abstention | **Partial**: safe withdrawal mechanics are complete, but validation fitting selected no active rule and chain fitting remains absent |
-| 5 — spectral cleanup | **Optional diagnostic-only**; zero prediction effect is tested |
-| 6 — transformation and chain robustness | **Complete for the current model** at one frozen threshold; chain sample remains small (n=12) |
+| 1 — pipeline validation/integration | **Verified**: demo startup, output contract, patch wording, current-model integration |
+| 2 — local-edit fine-tuning | **Smoke-tested, not adopted**. Head-only run completed end to end (68 train / 17 val / 20 test images, 24 source groups + 17 replay). Adapter save/reload is bit-exact; original checkpoint SHA-256 unchanged. Comparison verdict: **do not adopt** (AUROC 0.510 → 0.354). |
+| 3 — transformation-invariant objective/ablation | **Ablation run at smoke scale**. none / logit-MSE / symmetric-KL all reached F1 0.7500, recall 1.0000, FPR 1.0000; AUROC 0.4479 / 0.4375 / 0.4479. Verdict: **keep classification-only**. |
+| 4 — abstention | **Fitted and enabled on chain evidence**. Single-transformation fitting selected nothing; chain fitting accepted 3 rules. Held-out chains: abstains on 12.5%, accuracy among answered 0.750 → 0.810, abstained images 2.67× more error-prone. Bars were **not** lowered. |
+| 5 — spectral cleanup | **Diagnostic-only**; zero effect on probability is tested |
+| 6 — transformation and chain robustness | **Verified** at one frozen threshold; chain fitting sample n=48, reporting sample n=12 |
 | 7 — generator generalisation | **Not established**; SID_Set lacks per-generator labels and invalid configuration fails clearly |
-| 8 — repository tests | **Complete**: leakage, duplicates, quarantine, format, chains, contract, and safety tests pass |
-| 9 — demo/UI explainability | **Complete**: live startup verified; patch heat is explicitly not segmentation or proof |
-| 10 — post-fine-tuning recalibration | **Deferred with fine-tuning**; existing pre-registered threshold remains frozen |
-| 11 — audit/reproducibility | **Complete for the present non-training scope** in this README and `AUDIT.md` |
+| 8 — repository tests | **Verified**: leakage, duplicates, quarantine, format/resolution/aspect-ratio/compression confounds, filename leakage, chains, contract |
+| 9 — demo/UI explainability | **Verified**: patch heat is explicitly not segmentation or proof, and carries zero scoring weight |
+| 10 — post-fine-tuning recalibration | **Blocked**: no fine-tuned model was adopted, so there is nothing to recalibrate. The existing threshold 0.69 stays frozen. |
+| 11 — audit/reproducibility | **Verified** in this README and `AUDIT.md` |
+
+### Evidence grades used above
+
+| Grade | Meaning |
+|---|---|
+| **Verified** | Executed in this tree; the command and its output are reproducible |
+| **Smoke-tested** | Ran end to end on a deliberately tiny sample; proves the machinery, **not** the science |
+| **Historical** | Measured against an earlier threshold or checkpoint; labelled inline |
+| **Blocked** | Cannot run until a prerequisite lands |
+
+> **Threshold provenance.** Current results use the frozen calibrated threshold
+> **0.69**. Some earlier protocol numbers were produced at **0.42** before
+> calibration was fitted; those are labelled *historical* wherever they appear
+> and must not be compared directly with 0.69 results.
 
 ---
 
@@ -762,8 +801,10 @@ feature. Outputs land in `outputs/patch_ablation/` as `ablation.json`,
 
 ### Ablation result: patch analysis is explainability, not scoring
 
-Measured on **60 SID_Set images**, threshold 0.42 frozen across all modes
-(`outputs/patch_ablation/`):
+Measured on **60 SID_Set images**, threshold **0.42** frozen across all modes
+(`outputs/patch_ablation/`). *The threshold is historical (pre-calibration); the
+conclusion — patch evidence does not earn a scoring weight — is current and is
+why `fusion.mode` is `rgb_transform`.*
 
 | Mode | Accuracy | F1 | Recall | FPR | AUROC | passes/img | s/img | Coverage |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -893,19 +934,17 @@ final = 0.7 · whole_image + 0.3 · mean(transformed versions)
 ```
 
 Patch evidence carries **no** fusion weight: an ablation found it degraded F1
-and recall (see *Ablation result* under Patch-level analysis). The three-term
-mode `whole_patch_transform` remains available for re-testing:
+and recall (see *Ablation result* under Patch-level analysis).
 
-```
-final = 0.60 · whole_image
-      + 0.20 · mean(transformed versions)
-      + 0.20 · patch_evidence
-```
+> **Historical — not the shipped mode.** A three-term mode
+> `whole_patch_transform` (`0.60 · whole_image + 0.20 · mean(transformed) +
+> 0.20 · patch_evidence`) remains in the code so the decision can be re-tested
+> after a retrain. It is **not** in use and its weights do not affect any
+> reported number. Do not quote it as the fusion formula.
 
 Whole-image scoring carries the most weight because it is what the model was
 trained to produce. The transformed mean rewards predictions that survive
-redistribution. The patch term lets a locally edited region raise the score on
-an image that looks authentic overall.
+redistribution.
 
 **Every term degrades safely.** If patch analysis is unavailable — disabled, the
 image is too small to tile, or a patch pass failed — its weight is dropped and
@@ -922,17 +961,23 @@ All weights live under `fusion` in `configs/config.yaml`.
 
 ### Confidence
 
+**Current (shipped) formula — patch agreement carries no weight:**
+
 ```
-score = 0.35 · decisiveness
-      + 0.25 · version agreement
-      + 0.25 · transformation consistency
-      + 0.15 · patch agreement
+score = 0.40 · decisiveness
+      + 0.30 · version agreement
+      + 0.30 · transformation consistency
 ```
 
 *Decisiveness* is `2 × |p − 0.5|`. *Version agreement* is the share of image
 versions landing on the same side of the threshold as the original.
-*Consistency* is the transformation-consistency score. *Patch agreement* is the
-share of patches agreeing with the whole-image verdict.
+*Consistency* is the transformation-consistency score.
+
+> **Historical — no longer used.** An earlier build added a fourth term,
+> `+ 0.15 · patch agreement`. It was **removed on measured evidence**: including
+> it made confidence *worse* at separating correct from incorrect predictions
+> (AUROC 0.7684 → 0.7415). `confidence.patch_agreement_weight` is `0.0`; a
+> weight of zero drops the term entirely rather than leaving it inert.
 
 Scores map to High (≥0.70), Medium (≥0.45) and Low. An `Uncertain` verdict is
 never reported as High confidence.
@@ -1212,6 +1257,13 @@ retained: nothing measurably beat it.
 
 ## Measured results
 
+> ### ⚠️ HISTORICAL — threshold 0.42, superseded
+>
+> The numbers in this section were produced **before calibration was fitted**,
+> at threshold **0.42**. The shipped system uses the calibrated threshold
+> **0.69**. These are kept for provenance and **must not be compared directly**
+> with current results. Current results are in `FINAL_RESULTS.md`.
+
 From `outputs/protocol/metrics.json`. **120 SID_Set validation images** (48 for
 threshold selection, **72 held-out test**), Bombek1 checkpoint, threshold
 **0.42** fixed on clean validation data and never retuned. Reproduce with
@@ -1268,10 +1320,9 @@ Diagnosis from the cached scores:
   rescued only **2**.
 
 The gain on tampered images and the inflation on authentic ones roughly cancel.
-**On this evidence the patch term does not earn its 0.2 weight**, and the
-default `fusion.mode: whole_patch_transform` is not justified by these numbers.
-It has deliberately **not** been changed — retuning fusion weights on 72 test
-images would be fitting to the sample. Re-measure at larger n before deciding;
+**On this evidence the patch term does not earn its 0.2 weight.** The shipped
+`fusion.mode` is therefore `rgb_transform`, with patch evidence excluded from
+probability scoring entirely. Re-measure at larger n before deciding;
 a detector trained with locally-edited examples is the more likely real fix.
 
 ### Runtime

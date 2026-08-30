@@ -114,8 +114,20 @@ class SubgroupDatasetTest(unittest.TestCase):
             "validation": 1,
             "test": 1,
         }
-        datasets, _ = _make_datasets(config)
-        self.assertLessEqual(len({r.group_id for r in datasets["train"].records}), 2)
+        datasets, summary = _make_datasets(config)
+        # The limit caps LOCAL-EDIT source groups. Replay-mixture images are
+        # governed by synthetic_mixture_fraction instead, and are added after
+        # the limit has settled the local-edit set -- applying the limit to them
+        # too would discard almost the whole mixture, because every replay image
+        # is its own group.
+        local_groups = {
+            r.group_id for r in datasets["train"].records if r.subgroup != "synthetic"
+        }
+        self.assertLessEqual(len(local_groups), 2)
+        mixture = summary["synthetic_mixture"]
+        if mixture["enabled"]:
+            self.assertGreater(mixture["selected"], 0)
+            self.assertLessEqual(mixture["realized_fraction"], mixture["requested_fraction"] + 1e-9)
         for split in ("validation", "test"):
             groups = {record.group_id for record in datasets[split].records}
             self.assertEqual(len(groups), 1)

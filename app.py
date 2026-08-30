@@ -246,10 +246,15 @@ def render_patches(result: PipelineResult) -> None:
         use_container_width=True,
     )
     st.caption(
-        "A warm patch means the whole-image detector responded strongly when that "
-        "crop was shown to it. This is an explainability aid, not an edit "
-        "segmentation mask or a probability that the region was edited. Treat a "
-        "highlight as a region worth human review, never as proof of manipulation."
+        "A highlighted region is a suspicious region that influenced the model's "
+        "score. It is not proof of AI editing, a segmentation mask, or a "
+        "reconstruction of editing history."
+    )
+    st.caption(
+        "Patch evidence carries **zero weight** in both the reported probability "
+        "and the confidence score. It was demoted on measured evidence and is "
+        "kept purely as an explainability aid, so nothing above can move the "
+        "verdict — only help you decide where to look."
     )
 
 
