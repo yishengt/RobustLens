@@ -156,6 +156,7 @@ def patch_settings(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "min_patch_size": int(section.get("min_patch_size", DEFAULT_MIN_PATCH_SIZE)),
         "top_k": int(section.get("top_k", DEFAULT_TOP_K)),
         "heatmap_threshold": float(section.get("heatmap_threshold", DEFAULT_HEATMAP_THRESHOLD)),
+        "grid": section.get("grid"),
         "max_patches": int(section.get("max_patches", DEFAULT_MAX_PATCHES)),
         "evidence_statistic": str(section.get("evidence_statistic", DEFAULT_EVIDENCE)),
     }
@@ -169,6 +170,17 @@ def patch_settings(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         raise ValueError("patches.top_k must be positive")
     if settings["max_patches"] <= 0:
         raise ValueError("patches.max_patches must be positive")
+    if settings["grid"] is not None:
+        grid = int(settings["grid"])
+        if grid < 1:
+            raise ValueError(f"patches.grid must be at least 1, got {grid}")
+        if grid * grid > settings["max_patches"]:
+            raise ValueError(
+                f"patches.grid={grid} needs {grid * grid} forward passes but "
+                f"patches.max_patches is {settings['max_patches']}. Raise "
+                f"max_patches to at least {grid * grid}, or lower the grid."
+            )
+        settings["grid"] = grid
     if not 0.0 <= settings["heatmap_threshold"] <= 1.0:
         raise ValueError("patches.heatmap_threshold must be within [0, 1]")
     if settings["evidence_statistic"] not in EVIDENCE_STATISTICS:
@@ -235,6 +247,48 @@ def generate_patch_boxes(
     if len(boxes) > max_patches:
         indices = np.linspace(0, len(boxes) - 1, num=max_patches).round().astype(int)
         boxes = [boxes[index] for index in sorted(set(indices.tolist()))]
+    return boxes
+
+
+def generate_grid_boxes(
+    width: int,
+    height: int,
+    grid: int,
+    min_patch_size: int = DEFAULT_MIN_PATCH_SIZE,
+) -> List[Tuple[int, int, int, int]]:
+    """Split the image into exactly ``grid x grid`` tiles covering all of it.
+
+    The alternative -- fixed-size square tiles -- makes the region count depend
+    on the image's aspect ratio: a 4:3 photo tiles 4x3, a square one 4x4. That
+    is fine for the model but surprising in a UI, where "4x4" should mean
+    sixteen regions whatever the picture.
+
+    Tiles here are not square on a non-square image. That costs nothing in
+    practice: preprocessing resizes every crop to the model's square input
+    anyway, exactly as it already does to the whole image.
+
+    Remainder pixels go to the last row and column, so coverage is complete and
+    no strip along the right or bottom edge goes unscored.
+    """
+
+    grid = int(grid)
+    if grid < 1:
+        raise ValueError(f"patches.grid must be at least 1, got {grid}")
+    cell_width = width // grid
+    cell_height = height // grid
+    if min(cell_width, cell_height) < min_patch_size:
+        return []
+
+    boxes: List[Tuple[int, int, int, int]] = []
+    for row in range(grid):
+        y = row * cell_height
+        # The final row and column absorb the remainder rather than leaving a
+        # sliver of the image unmeasured.
+        box_height = height - y if row == grid - 1 else cell_height
+        for column in range(grid):
+            x = column * cell_width
+            box_width = width - x if column == grid - 1 else cell_width
+            boxes.append((x, y, box_width, box_height))
     return boxes
 
 
@@ -598,6 +652,12 @@ def _boxes_for_mode(
     mode: str, settings: Dict[str, Any], width: int, height: int
 ) -> List[Tuple[int, int, int, int]]:
     """Grid for a single-pass mode."""
+
+    # An explicit grid wins over the sliding window: the caller asked for a
+    # fixed number of regions, so neither the stride nor the cap should change
+    # it. patch_settings has already checked it fits within max_patches.
+    if settings.get("grid"):
+        return generate_grid_boxes(width, height, settings["grid"], settings["min_patch_size"])
 
     max_patches = settings["coarse_max_patches"] if mode == MODE_COARSE else settings["max_patches"]
     stride = (

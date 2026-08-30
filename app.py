@@ -1,12 +1,8 @@
-"""Streamlit demo for the robust AI-generated image detector.
+"""RobustLens — AI-generated image detection under real-world transformations.
 
 Launch with::
 
     streamlit run app.py
-
-Upload one image to see the final classification, the AI and real
-probabilities, the confidence level, the transformation-consistency score, the
-per-transformation predictions, and the patch-level risk map.
 """
 
 from __future__ import annotations
@@ -16,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -23,11 +20,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.pipeline.confidence import (  # noqa: E402
-    CONFIDENCE_HIGH,
-    CONFIDENCE_LOW,
-    CONFIDENCE_MEDIUM,
-)
 from src.pipeline.model_loader import ModelSetupError  # noqa: E402
 from src.pipeline.patches import overlay_patch_heatmap  # noqa: E402
 from src.pipeline.pipeline import DetectionPipeline, PipelineResult  # noqa: E402
@@ -36,12 +28,28 @@ from src.pipeline.validation import ImageValidationError  # noqa: E402
 from src.utils.config import load_config, resolve_config_path  # noqa: E402
 
 DEFAULT_CONFIG = "configs/config.yaml"
-# Defaults to the path scripts/setup.py downloads to, so the demo works with no
+# Defaults to the path scripts/setup.py downloads to, so the app works with no
 # manual step. checkpoints/best.pt is still accepted if you keep one there.
 DEFAULT_CHECKPOINT = "models/pretrained/pytorch_model.pt"
 
+STYLE = """
+<style>
+  #MainMenu, footer, header {visibility: hidden;}
+  .block-container {padding-top: 3rem; padding-bottom: 4rem; max-width: 1100px;}
+  h1, h2, h3 {letter-spacing: -0.02em; font-weight: 600;}
+  h1 {font-size: 1.9rem !important; margin-bottom: .1rem;}
+  h3 {font-size: 1.05rem !important; margin-top: 1.4rem;}
+  [data-testid="stMetricValue"] {font-size: 1.5rem; font-weight: 600;}
+  [data-testid="stMetricLabel"] {opacity: .7; font-size: .8rem;}
+  .rl-sub {opacity: .6; font-size: .9rem; margin-bottom: 1.6rem;}
+  .rl-verdict {font-size: 1.55rem; font-weight: 600; letter-spacing: -.02em;}
+  .rl-note {opacity: .55; font-size: .8rem; line-height: 1.5;}
+  hr {margin: 1.8rem 0; opacity: .12;}
+</style>
+"""
 
-@st.cache_resource(show_spinner="Loading detector checkpoint...")
+
+@st.cache_resource(show_spinner="Loading model…")
 def load_pipeline(config_path: str, checkpoint_path: str, device: str) -> DetectionPipeline:
     """Load the config and checkpoint once and reuse them across reruns."""
 
@@ -51,234 +59,279 @@ def load_pipeline(config_path: str, checkpoint_path: str, device: str) -> Detect
     )
 
 
-def label_badge(label: str) -> str:
-    """Return a coloured markdown badge for the verdict."""
-
-    colour = {LABEL_AI: "red", LABEL_AUTHENTIC: "green"}.get(label, "orange")
-    return f":{colour}[**{label}**]"
+def _verdict_colour(label: str) -> str:
+    return {LABEL_AI: "#d1493f", LABEL_AUTHENTIC: "#2e7d54"}.get(label, "#b8860b")
 
 
-def confidence_badge(level: str) -> str:
-    colour = {CONFIDENCE_HIGH: "green", CONFIDENCE_MEDIUM: "orange", CONFIDENCE_LOW: "red"}
-    return f":{colour.get(level, 'gray')}[**{level}**]"
+def pretty_version(name: str) -> str:
+    """Turn an internal transform id into something a reader understands.
 
-
-def is_calibrated(pipeline: DetectionPipeline) -> bool:
-    """True when persisted calibration parameters were loaded."""
-
-    return getattr(pipeline, "calibrator", None) is not None
-
-
-def render_calibration_status(pipeline: DetectionPipeline) -> None:
-    """State plainly what the number is and where the threshold came from.
-
-    Four states must stay distinguishable: calibrated probability vs raw model
-    score, and a data-derived threshold vs the interface default.
+    Chart axes and tables are read at a glance, so ``jpeg_q70`` becomes
+    "JPEG quality 70". Parsed from the naming convention rather than a fixed
+    lookup, so a new transform added to the config still gets a sensible label
+    instead of falling back to its raw id.
     """
 
-    status = pipeline.calibration_status()
-    st.subheader("How to read these numbers")
-
-    left, right = st.columns(2)
-    if status["calibrated"]:
-        left.success(f"**Probability:** {status['probability_kind']}")
-        detail = status["probability_note"]
-        if status.get("temperature"):
-            detail += f" Fitted temperature T = {status['temperature']:.4f}."
-        left.caption(detail)
-    else:
-        left.warning(f"**Probability:** {status['probability_kind']}")
-        left.caption(status["probability_note"])
-
-    if status["threshold_source"].startswith("data-derived"):
-        right.success(f"**Threshold {status['threshold']:.2f}:** {status['threshold_source']}")
-    else:
-        right.warning(f"**Threshold {status['threshold']:.2f}:** {status['threshold_source']}")
-    right.caption(status["threshold_note"])
-
-    bands = status["label_bands"]
-    if bands.get("authentic_max") is not None:
-        st.caption(
-            f"Label bands: likely authentic below {bands['authentic_max']:.2f}, uncertain "
-            f"between, likely AI-generated at or above {bands['ai_min']:.2f} "
-            f"({status['label_bands_source']})."
-        )
-    if not status["calibrated"]:
-        st.caption(
-            "Fit calibration on labelled validation data to replace both with "
-            "data-derived values:  `./.venv/bin/python scripts/calibrate_threshold.py "
-            "--checkpoint models/pretrained/pytorch_model.pt --target-fpr 0.01`"
-        )
-
-
-def render_metadata(result: PipelineResult) -> None:
-    metadata = result.metadata
-    if metadata is None:
-        return
-    st.caption(
-        f"{metadata.filename} · {metadata.file_type} · {metadata.file_size_human} · "
-        f"{metadata.width}x{metadata.height} · original colour mode {metadata.color_mode}"
-    )
+    if name in ("original", "clean"):
+        return "Original"
+    try:
+        if name.startswith("jpeg_q"):
+            return f"JPEG quality {int(name[6:])}"
+        if name.startswith("blur_s"):
+            return f"Blur {float(name[6:]):g}px"
+        if name.startswith("resize_"):
+            return f"Resized to {float(name[7:].rstrip('x')) * 100:g}%"
+        if name.startswith("noise_s"):
+            return f"Noise {float(name[7:]) * 100:g}%"
+        if name.startswith("center_crop_"):
+            return f"Cropped to {int(name.rsplit('_', 1)[1])}%"
+    except (ValueError, IndexError):
+        pass
+    if name.startswith("color_jitter"):
+        suffix = name[len("color_jitter"):].strip("_")
+        return f"Colour shift {suffix}" if suffix else "Colour shift"
+    return name.replace("_", " ").capitalize()
 
 
 def render_headline(result: PipelineResult) -> None:
-    """Show the verdict, probabilities, confidence and consistency."""
+    """Verdict, probability, confidence and stability."""
 
-    st.markdown(f"### Result: {label_badge(result.label)}")
-    st.write(result.confidence.statement)
-
-    columns = st.columns(4)
-    columns[0].metric("AI-generated probability", f"{result.ai_probability:.1%}")
-    columns[1].metric("Real-image probability", f"{result.real_probability:.1%}")
-    columns[2].metric("Confidence", result.confidence.level)
-    columns[3].metric("Transformation consistency", f"{result.consistency.consistency_score:.1%}")
-    st.progress(
-        min(1.0, max(0.0, float(result.ai_probability))),
-        text=f"AI-generated likelihood: {result.ai_probability:.1%}",
-    )
+    colour = _verdict_colour(result.label)
     st.markdown(
-        f"Confidence level: {confidence_badge(result.confidence.level)} · "
-        f"estimated transformation sensitivity: **{result.manipulation_severity}**"
+        f"<div class='rl-verdict' style='color:{colour}'>{result.label}</div>",
+        unsafe_allow_html=True,
     )
 
+    columns = st.columns(3)
+    columns[0].metric("AI-generated", f"{result.ai_probability:.1%}")
+    columns[1].metric("Confidence", result.confidence.level)
+    columns[2].metric("Stability", f"{result.consistency.consistency_score:.0%}")
+    st.progress(min(1.0, max(0.0, float(result.ai_probability))))
 
-def render_per_transformation(result: PipelineResult) -> None:
-    """Table and chart of the per-image-version predictions."""
+    decision = result.abstention
+    if decision is not None and decision.abstain:
+        st.info(decision.statement)
+
+
+def render_calibration_status(pipeline: DetectionPipeline) -> None:
+    """One compact line saying what the number is and where the threshold came from.
+
+    Compact, but never omitted. Four states must stay distinguishable: a
+    calibrated probability versus a raw model score, and a threshold fitted on
+    data versus an interface default. Presenting a raw score beside a default
+    threshold as though both were derived from data would overstate what the
+    system knows, so the line is always shown and the detail is one click away.
+    """
+
+    status = pipeline.calibration_status()
+    calibrated = status["calibrated"]
+    derived = status["threshold_source"].startswith("data-derived")
+
+    probability_text = "Calibrated probability" if calibrated else "Uncalibrated score"
+    threshold_text = (
+        f"threshold {status['threshold']:.2f} from data"
+        if derived
+        else f"threshold {status['threshold']:.2f} (default)"
+    )
+    marker = "✓" if calibrated and derived else "!"
+    st.markdown(
+        f"<div class='rl-note'>{marker} {probability_text} · {threshold_text}</div>",
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Scoring details"):
+        st.write(status["probability_note"])
+        st.write(status["threshold_note"])
+        bands = status["label_bands"]
+        if bands.get("authentic_max") is not None:
+            st.caption(
+                f"Authentic below {bands['authentic_max']:.2f} · "
+                f"AI-generated at or above {bands['ai_min']:.2f} "
+                f"({status['label_bands_source']})."
+            )
+        if not calibrated:
+            st.caption(
+                "Fit calibration on labelled validation data to replace both with "
+                "data-derived values: `scripts/calibrate_threshold.py`"
+            )
+
+
+def robustness_frame(result: PipelineResult) -> pd.DataFrame:
+    """Per-version scores as percentages, in the order they were generated."""
 
     rows: List[Dict[str, Any]] = [
         {
-            "Version": item.name,
-            "AI probability": round(item.ai_probability, 4),
-            "Real probability": round(item.real_probability, 4),
-            "Label": item.label,
+            "Version": pretty_version(item.name),
+            "Likelihood": round(item.ai_probability * 100, 1),
+            "Type": "Original" if item.is_original else "Transformed",
         }
         for item in result.predictions
     ]
-    frame = pd.DataFrame(rows).set_index("Version")
+    return pd.DataFrame(rows)
 
-    st.subheader("Predictions for each image version")
-    st.bar_chart(frame[["AI probability"]], height=280)
-    st.dataframe(frame, use_container_width=True)
 
-    consistency = result.consistency
-    stats = st.columns(5)
-    stats[0].metric("Average", f"{consistency.mean:.3f}")
-    stats[1].metric("Minimum", f"{consistency.minimum:.3f}")
-    stats[2].metric("Maximum", f"{consistency.maximum:.3f}")
-    stats[3].metric("Std. deviation", f"{consistency.std:.3f}")
-    stats[4].metric("Range", f"{consistency.score_range:.3f}")
+def robustness_chart(frame: pd.DataFrame, threshold_percent: float) -> "alt.LayerChart":
+    """Horizontal bars, one row per version, with the decision threshold marked.
+
+    Horizontal because the labels are words: fifteen rotated captions along an
+    x-axis are unreadable, while fifteen left-aligned rows are scannable. The
+    order is the order the versions were generated -- sorting by score would
+    scatter the JPEG, blur and resize families and hide the pattern the chart
+    exists to show.
+    """
+
+    order = frame["Version"].tolist()
+    base = alt.Chart(frame).encode(
+        y=alt.Y("Version:N", sort=order, title=None, axis=alt.Axis(labelLimit=200)),
+        x=alt.X(
+            "Likelihood:Q",
+            title="Likelihood AI-generated (%)",
+            scale=alt.Scale(domain=[0, 100]),
+        ),
+    )
+    bars = base.mark_bar(height=14, cornerRadiusEnd=2).encode(
+        color=alt.Color(
+            "Type:N",
+            scale=alt.Scale(
+                domain=["Original", "Transformed"], range=["#3d6ea8", "#9bb4d0"]
+            ),
+            legend=alt.Legend(title=None, orient="top"),
+        ),
+        tooltip=[
+            alt.Tooltip("Version:N", title="Version"),
+            alt.Tooltip("Likelihood:Q", title="Likelihood (%)", format=".1f"),
+        ],
+    )
+    labels = base.mark_text(align="left", dx=4, fontSize=11, color="#666").encode(
+        text=alt.Text("Likelihood:Q", format=".1f")
+    )
+    threshold = (
+        alt.Chart(pd.DataFrame({"Threshold": [threshold_percent]}))
+        .mark_rule(strokeDash=[4, 4], color="#d1493f", size=1)
+        .encode(x=alt.X("Threshold:Q", scale=alt.Scale(domain=[0, 100])))
+    )
+    return (bars + labels + threshold).properties(height=max(220, 26 * len(frame)))
+
+
+def render_robustness(result: PipelineResult) -> None:
+    """How the score moves across transformed versions of the same image."""
+
+    st.markdown("### Robustness")
+    frame = robustness_frame(result)
+    st.altair_chart(
+        robustness_chart(frame, float(result.threshold_used) * 100.0),
+        use_container_width=True,
+    )
     st.caption(
-        f"{consistency.agreement:.0%} of the {consistency.num_versions} image versions "
-        f"agreed with the original image's verdict."
+        f"Dashed line marks the {result.threshold_used:.0%} decision threshold. "
+        f"Bars to its right were called AI-generated."
     )
 
-
-def render_charts(result: PipelineResult) -> None:
-    """Render the drift and confidence-component charts."""
-
-    charts = (result.explanation.charts if result.explanation else {}) or {}
-
-    drift = charts.get("transformation_scores")
-    if drift and drift["labels"]:
-        st.subheader(drift["title"])
-        st.caption("Positive bars mean the transformation pushed the score toward AI-generated.")
-        st.bar_chart(pd.DataFrame({"Drift": drift["values"]}, index=drift["labels"]), height=260)
-
-    components = charts.get("confidence_components")
-    if components:
-        st.subheader("Confidence breakdown")
-        st.bar_chart(
-            pd.DataFrame({"Score": components["values"]}, index=components["labels"]),
-            height=240,
-        )
+    consistency = result.consistency
+    columns = st.columns(4)
+    columns[0].metric("Versions tested", consistency.num_versions)
+    columns[1].metric("Versions agreeing", f"{consistency.agreement:.0%}")
+    columns[2].metric("Spread", f"{consistency.score_range * 100:.1f}%")
+    columns[3].metric("Typical variation", f"{consistency.std * 100:.1f}%")
+    st.caption(
+        f"Lowest {consistency.minimum:.1%} · highest {consistency.maximum:.1%} across "
+        f"{consistency.num_versions} versions of the same image."
+    )
 
 
 def render_patches(result: PipelineResult) -> None:
-    """Patch-risk heatmap, highest-risk regions, and the honest caveats."""
+    """Region heat map, with the caveats that keep it from being over-read."""
 
-    st.subheader("Patch-level risk map")
     report = result.patches
-    if report is None:
-        st.info("Patch-level analysis was not run for this image.")
-        return
-    if not report.available:
-        st.warning(report.message)
+    if report is None or not report.available:
         return
 
+    st.markdown("### Regions")
     overlay = overlay_patch_heatmap(result.original_image, report)
-    left, right = st.columns(2)
-    if result.original_image is not None:
-        left.image(result.original_image, caption="Original", use_container_width=True)
     if overlay is not None:
-        right.image(
-            overlay,
-            caption=f"Patch risk ({len(report.patches)} patches; top {len(report.top_patches)} outlined)",
-            use_container_width=True,
-        )
+        left, right = st.columns(2)
+        if result.original_image is not None:
+            left.image(result.original_image, use_container_width=True)
+        right.image(overlay, use_container_width=True)
 
-    stats = st.columns(4)
-    stats[0].metric("Patches scored", len(report.patches))
-    stats[1].metric("Mean patch p(AI)", f"{report.mean_probability:.1%}")
-    stats[2].metric("Max patch p(AI)", f"{report.max_probability:.1%}")
-    stats[3].metric("Patch agreement", f"{report.agreement:.0%}")
+    columns = st.columns(3)
+    columns[0].metric("Regions scored", len(report.patches))
+    columns[1].metric("Highest", f"{report.max_probability:.1%}")
+    if report.coverage is not None:
+        columns[2].metric("Coverage", f"{float(report.coverage.mean()):.0%}")
 
     if report.coverage is not None and float(report.coverage.mean()) < 0.999:
         st.caption(
-            f"Patches covered {report.coverage.mean():.0%} of the image; uncovered areas are "
+            f"Regions cover {report.coverage.mean():.0%} of the image; uncovered areas are "
             f"left untinted because nothing was measured there, not because they look authentic."
         )
 
-    st.markdown("**Highest-risk regions**")
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Rank": rank,
-                    "x": patch.x,
-                    "y": patch.y,
-                    "width": patch.width,
-                    "height": patch.height,
-                    "p(AI)": round(patch.ai_probability, 4),
-                }
-                for rank, patch in enumerate(report.top_patches, start=1)
-            ]
-        ).set_index("Rank"),
-        use_container_width=True,
-    )
     st.caption(
         "A highlighted region is a suspicious region that influenced the model's "
         "score. It is not proof of AI editing, a segmentation mask, or a "
         "reconstruction of editing history."
     )
     st.caption(
-        "Patch evidence carries **zero weight** in both the reported probability "
-        "and the confidence score. It was demoted on measured evidence and is "
-        "kept purely as an explainability aid, so nothing above can move the "
-        "verdict — only help you decide where to look."
+        "Region evidence carries zero weight in both the reported probability and "
+        "the confidence score — it is shown to indicate where to look, and cannot "
+        "move the result."
     )
+
+    # Every scored region, not just the outlined ones. `patches.top_k` controls
+    # how many boxes get drawn on the overlay -- outlining all of them would be
+    # visual noise -- but the table must account for the count reported above,
+    # otherwise "12 regions scored" sits next to a three-row table.
+    outlined = {(patch.x, patch.y, patch.width, patch.height) for patch in report.top_patches}
+    ranked = sorted(report.patches, key=lambda patch: patch.ai_probability, reverse=True)
+    with st.expander(f"All {len(ranked)} region scores"):
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Rank": index,
+                        "Position": f"{patch.x}, {patch.y}",
+                        "Size": f"{patch.width} x {patch.height}",
+                        "Likelihood AI-generated": f"{patch.ai_probability:.1%}",
+                        "Outlined": "yes"
+                        if (patch.x, patch.y, patch.width, patch.height) in outlined
+                        else "",
+                    }
+                    for index, patch in enumerate(ranked, start=1)
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(
+            f"Sorted by score. The {len(outlined)} highest are outlined on the image above."
+        )
 
 
 def render_errors(result: PipelineResult) -> None:
     if not result.errors:
         return
-    with st.expander(f"{len(result.errors)} non-fatal issue(s) during analysis"):
+    with st.expander(f"{len(result.errors)} non-fatal issue(s)"):
         for error in result.errors:
             st.write(f"**{error.get('stage', 'pipeline')}**: {error.get('error')}")
 
 
 def main() -> None:
-    st.set_page_config(page_title="Robust AI Image Detector", page_icon="🔍", layout="wide")
-    st.title("🔍 Robust Detection of AI-Generated Images")
-    st.caption(
-        "Image-level detection under real-world transformations. Results are "
-        "confidence estimates from a hackathon-scale model, not proof."
+    st.set_page_config(page_title="RobustLens", layout="centered")
+    st.markdown(STYLE, unsafe_allow_html=True)
+
+    st.markdown("# RobustLens")
+    st.markdown(
+        "<div class='rl-sub'>AI-generated image detection under real-world "
+        "transformations</div>",
+        unsafe_allow_html=True,
     )
 
     with st.sidebar:
-        st.header("Setup")
-        config_path = st.text_input("Config file", DEFAULT_CONFIG)
-        checkpoint_input = st.text_input("Model checkpoint", DEFAULT_CHECKPOINT)
+        st.markdown("### Settings")
         device_choice = st.selectbox("Device", ["auto", "cpu", "cuda", "mps"], index=0)
+        with st.expander("Advanced"):
+            config_path = st.text_input("Config", DEFAULT_CONFIG)
+            checkpoint_input = st.text_input("Checkpoint", DEFAULT_CHECKPOINT)
 
     try:
         config = load_config(config_path)
@@ -290,37 +343,28 @@ def main() -> None:
         st.error(f"Configuration error: {exc}")
         st.stop()
     except ModelSetupError as exc:
-        st.error("**Model setup required**")
+        st.error("Model not found")
         st.code(str(exc))
-        st.info(
-            "This demo is inference-only and needs a trained checkpoint. "
-            "See `models/README.md` for the expected format."
-        )
         st.stop()
 
+    summary = pipeline.bundle.summary()
     with st.sidebar:
         st.divider()
-        st.header("Model")
-        summary = pipeline.bundle.summary()
-        st.write(f"**Architecture:** `{summary['architecture']}`")
-        st.write(f"**Parameters:** {summary['parameters_millions']:.2f} M")
-        st.write(f"**Device:** `{summary['device']}`")
-        st.write(f"**Transformations:** {len(pipeline.transform_specs)}")
-        st.caption(
-            "Under the 2B parameter limit"
-            if summary["under_2b_parameter_limit"]
-            else "⚠️ Above the 2B parameter limit"
+        st.markdown(
+            f"<div class='rl-note'>{summary['parameters_millions']:.0f}M parameters<br>"
+            f"{summary['device']}<br>"
+            f"{len(pipeline.transform_specs)} transformations</div>",
+            unsafe_allow_html=True,
         )
 
     uploaded = st.file_uploader(
-        "Upload an image", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=False
+        "Image", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=False
     )
     if uploaded is None:
-        st.info("Upload a JPG, JPEG, PNG or WEBP image to begin.")
         return
 
     try:
-        with st.spinner("Running the pipeline across every transformed version..."):
+        with st.spinner("Analysing…"):
             result = pipeline.analyse_bytes(uploaded.getvalue(), uploaded.name)
     except ImageValidationError as exc:
         st.error(f"Invalid image: {exc}")
@@ -329,35 +373,35 @@ def main() -> None:
         st.error(f"Analysis failed: {type(exc).__name__}: {exc}")
         return
 
-    image_column, result_column = st.columns([1, 1.4])
+    image_column, result_column = st.columns([1, 1.3])
     with image_column:
         if result.original_image is not None:
-            st.image(result.original_image, caption="Uploaded image", use_container_width=True)
-        render_metadata(result)
+            st.image(result.original_image, use_container_width=True)
     with result_column:
         render_headline(result)
+        render_calibration_status(pipeline)
 
     st.divider()
-    render_per_transformation(result)
-    st.divider()
-    render_patches(result)
-    st.divider()
-    render_charts(result)
+    render_robustness(result)
+
+    if result.patches is not None and result.patches.available:
+        st.divider()
+        render_patches(result)
+
     render_errors(result)
 
-    render_calibration_status(pipeline)
-
+    st.divider()
     detailed = result.as_detailed_dict()
     st.download_button(
-        "Download detailed JSON",
+        "Download JSON",
         data=json.dumps(detailed, indent=2),
-        file_name=f"{Path(result.image_path).stem or 'result'}_detection.json",
+        file_name=f"{Path(result.image_path).stem or 'result'}.json",
         mime="application/json",
     )
-    with st.expander("Compact report schema"):
-        st.json(result.as_report_dict())
-    with st.expander("Full JSON result"):
-        st.json(detailed)
+    st.markdown(
+        f"<div class='rl-note'>{result.confidence.statement}</div>",
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

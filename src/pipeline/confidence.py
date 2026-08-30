@@ -33,10 +33,7 @@ DEFAULT_PATCH_AGREEMENT_WEIGHT = 0.0
 DEFAULT_HIGH_MIN = 0.70
 DEFAULT_MEDIUM_MIN = 0.45
 
-DISCLAIMER = (
-    "This is a probabilistic estimate from a hackathon-scale model, not proof "
-    "of how the image was made."
-)
+DISCLAIMER = "This is a probabilistic estimate, not proof of how the image was made."
 
 
 @dataclass(frozen=True)
