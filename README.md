@@ -18,6 +18,17 @@ see below.
 | **[`DEMO_SCRIPT.md`](DEMO_SCRIPT.md)** | 3-minute demo walkthrough |
 | **[`AUDIT.md`](AUDIT.md)** | Independent implementation audit and its follow-up work |
 
+**Experimental adapters (optional).** Four LoRA adapters from experiments that
+were **rejected on measurement** are published at
+**[Dylennnn/techjam](https://huggingface.co/Dylennnn/techjam)** so the rejections
+can be verified independently. They are **not** part of the shipped system and
+are not needed to run it — see
+[`models/adapters/README.md`](models/adapters/README.md).
+
+```bash
+python scripts/download_adapters.py --list   # optional; not needed to run RobustLens
+```
+
 ---
 
 ## Current validated scope
