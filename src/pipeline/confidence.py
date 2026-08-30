@@ -26,10 +26,10 @@ CONFIDENCE_HIGH = "High"
 CONFIDENCE_MEDIUM = "Medium"
 CONFIDENCE_LOW = "Low"
 
-DEFAULT_DECISIVENESS_WEIGHT = 0.35
-DEFAULT_AGREEMENT_WEIGHT = 0.25
-DEFAULT_CONSISTENCY_WEIGHT = 0.25
-DEFAULT_PATCH_AGREEMENT_WEIGHT = 0.15
+DEFAULT_DECISIVENESS_WEIGHT = 0.4
+DEFAULT_AGREEMENT_WEIGHT = 0.3
+DEFAULT_CONSISTENCY_WEIGHT = 0.3
+DEFAULT_PATCH_AGREEMENT_WEIGHT = 0.0
 DEFAULT_HIGH_MIN = 0.70
 DEFAULT_MEDIUM_MIN = 0.45
 
@@ -95,10 +95,15 @@ def compute_confidence(
         "agreement": float(settings.get("agreement_weight", DEFAULT_AGREEMENT_WEIGHT)),
         "consistency": float(settings.get("consistency_weight", DEFAULT_CONSISTENCY_WEIGHT)),
     }
-    if patch_agreement is not None:
-        raw_weights["patch_agreement"] = float(
-            settings.get("patch_agreement_weight", DEFAULT_PATCH_AGREEMENT_WEIGHT)
-        )
+    patch_weight = float(
+        settings.get("patch_agreement_weight", DEFAULT_PATCH_AGREEMENT_WEIGHT)
+    )
+    # A zero weight disables the term entirely rather than leaving an inert
+    # entry in the reported weights. Patch agreement is disabled by default:
+    # scripts/evaluate_confidence.py measured that it made confidence *worse*
+    # at separating correct predictions from incorrect ones.
+    if patch_agreement is not None and patch_weight > 0.0:
+        raw_weights["patch_agreement"] = patch_weight
     total = sum(raw_weights.values())
     if total <= 0:
         raise ValueError(f"Confidence weights must sum to a positive value, got {raw_weights}")

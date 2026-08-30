@@ -272,17 +272,21 @@ manifest. For a smaller balanced sample:
 
 ## Runtime expectations
 
-The detector is 740 M parameters, so it is not instant on CPU:
+The detector is 740 M parameters. **Use `--device mps` on Apple Silicon** — it is
+about 8.9× faster than CPU and was verified to produce matching probabilities
+(0.0108 vs 0.0110 on the same image, no NaNs).
 
-| Operation | CPU time |
-|---|---|
-| One-time model load | ~14 s |
-| Per image, `--no-transformations` | ~7 s |
-| Per image, full 15-version sweep | ~110 s |
+| Operation | CPU | MPS |
+|---|---|---|
+| One-time model load | ~14 s | ~15 s |
+| One forward pass | ~6.7 s | ~0.75 s |
+| Per image, `--no-transformations` | ~7 s | ~1 s |
+| Per image, full 15-version sweep | ~110 s | ~12 s |
+| Per image, 15 versions + 12 patches | ~195 s | ~20 s |
 
-`--device cpu` is the tested path. `--device mps` (Apple GPU) and
-`--device cuda` are wired up but **untested with this checkpoint's bfloat16
-SigLIP weights** — if either errors or returns NaNs, fall back to CPU.
+Measured on this machine with the Bombek1 checkpoint; your numbers will differ.
+`--device cuda` is wired up but has not been tested here. If a device errors or
+returns NaNs, fall back to `--device cpu`.
 
 Two behaviours to expect, both intentional:
 
@@ -530,15 +534,38 @@ and a populated `errors` array. A single bad file never aborts a batch run.
 Tiles the image into overlapping patches, scores each through the same model and
 preprocessing as the full image, and reconstructs a risk heatmap.
 
-### Cost
+### Modes
 
-**Every patch is a full forward pass.** With the 740 M-parameter detector that
-is ~7 s per patch on CPU, so a 12-patch image takes about two minutes. Because
-of this:
+Patch cost is one forward pass per patch, so the mode decides the bill:
 
-- batch inference has patches **off by default**; opt in with `--patches`
-- `patches.max_patches` caps the grid; larger grids are evenly subsampled
-- the Streamlit demo runs them on the single uploaded image
+| `patches.mode` | Passes / image | What it does |
+|---|---:|---|
+| `off` | 0 | no patch scoring |
+| `coarse` | ~4 | one small grid — cheapest useful map |
+| `full` | ~12 | one dense grid, capped by `max_patches` |
+| `top_k` | ~12 | coarse grid, then refine only the top-k regions |
+| **`uncertain_only`** (default) | **0 or ~12** | runs `base_mode` **only** when the whole-image score falls inside `uncertain_band`; confident images stop early and spend nothing |
+
+`uncertain_only` is the default because the detector is confident on most
+images, and patch scoring on an already-decided image buys nothing.
+
+### Cost controls
+
+- **Early stopping** — `uncertain_only` skips patches entirely outside the
+  uncertain band.
+- **Whole-image reuse** — a patch box covering the whole image reuses the
+  whole-image score instead of recomputing it; reuses are counted in
+  `patch_analysis.reused_scores`.
+- **Caching** — a box requested twice (as `top_k` refinement can) is served
+  from cache.
+- **Batched inference** under `torch.inference_mode()`, with the model loaded
+  once and reused.
+- **`--device mps`** is ~8.9× faster than CPU.
+- `patches.max_patches` caps the grid; larger grids are evenly subsampled.
+- Batch inference has patches **off by default**; opt in with `--patches`.
+
+Every run reports its own cost: `forward_passes`, `reused_scores`, `seconds`,
+`peak_memory_mb` and heatmap `coverage`.
 
 ```bash
 ./.venv/bin/python scripts/run_inference.py \
@@ -556,6 +583,13 @@ All under `patches` in `configs/config.yaml`:
 | Key | Default | Meaning |
 |---|---:|---|
 | `enabled` | `true` | master switch |
+| `mode` | `uncertain_only` | `off`, `coarse`, `full`, `top_k`, `uncertain_only` |
+| `base_mode` | `full` | what `uncertain_only` runs when it runs |
+| `uncertain_band` | `[0.2, 0.8]` | whole-image scores that trigger patch analysis |
+| `coarse_max_patches` | `4` | cap for `coarse` mode |
+| `refine_factor` | `2` | `top_k` splits each chosen patch into 2×2 |
+| `batch_size` | `null` | falls back to `inference.batch_size` |
+| `device` | `null` | falls back to the model's device |
 | `patch_size` | `256` | window size in original-image pixels |
 | `stride` | `192` | `< patch_size` produces overlapping patches |
 | `min_patch_size` | `64` | below this the image is too small to tile |
@@ -568,6 +602,67 @@ All under `patches` in `configs/config.yaml`:
 the default because a bare `max` over many patches drifts upward simply as the
 maximum of many noisy scores, which inflates false positives on authentic
 images.
+
+### Ablation: does patch analysis earn its cost?
+
+```bash
+./.venv/bin/python scripts/ablate_patches.py \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --limit 60 --per-class-limit 20 --device mps \
+  --output-dir outputs/patch_ablation
+```
+
+Runs every mode against the same whole-image score at one frozen threshold and
+records, per mode: accuracy, balanced accuracy, F1, recall, FPR, AUROC, mean
+forward passes, seconds per image, heatmap coverage, peak memory, and **how
+many final decisions actually changed**.
+
+It ends with a verdict computed from the numbers: a mode keeps scoring status
+only if it improves F1 or recall **without** raising the false-positive rate.
+Otherwise the report says to demote patch analysis to an explainability
+feature. Outputs land in `outputs/patch_ablation/` as `ablation.json`,
+`modes.csv` and `per_image.csv`.
+
+### Ablation result: patch analysis is explainability, not scoring
+
+Measured on **60 SID_Set images**, threshold 0.42 frozen across all modes
+(`outputs/patch_ablation/`):
+
+| Mode | Accuracy | F1 | Recall | FPR | AUROC | passes/img | s/img | Coverage |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **whole-image only** | **0.750** | **0.776** | **0.650** | 0.050 | **0.844** | 0 | 0.56 | — |
+| coarse | 0.733 | 0.758 | 0.625 | 0.050 | 0.838 | 4.0 | 2.49 | 27.8 % |
+| full | 0.733 | 0.758 | 0.625 | 0.050 | 0.811 | 12.0 | 6.26 | 70.2 % |
+| top_k | 0.733 | 0.758 | 0.625 | 0.050 | 0.818 | 12.0 | 6.41 | 27.8 % |
+| uncertain_only | 0.733 | 0.758 | 0.625 | 0.050 | 0.844 | **1.6** | **1.33** | 67.9 % |
+
+**Every mode scored worse than whole-image alone** — F1 −0.019, recall −0.025,
+accuracy −0.017 — with **no** reduction in false positives. Only one decision
+out of 60 changed, and it changed for the worse.
+
+**Patch evidence has therefore been removed from scoring.** `fusion.mode` is
+now `rgb_transform`; patch analysis stays enabled purely for the heatmap. This
+is not a preference — the ablation applies a rule fixed before the run (a mode
+keeps scoring status only if it improves F1 or recall without raising FPR), and
+an earlier independent 120-image protocol run reached the same conclusion.
+Re-run `scripts/ablate_patches.py` after any checkpoint change to re-test;
+`fusion.whole_patch` weights remain configured for that.
+
+Why it fails here, from the cached scores: on authentic images patch evidence
+averages **0.297** against a whole-image score of **0.081** (the
+max-of-many-noisy-patches inflation), while on tampered images it barely
+exceeds the whole-image score and correlates with it at **r = 0.83** — largely
+redundant. The likely real fix is a checkpoint trained with locally edited
+examples, not a better patch aggregation.
+
+**Cost.** `uncertain_only` is the cheapest useful mode at **1.6 passes and
+1.33 s per image — 4.7× cheaper than `full`** — because it skips patches
+entirely on confidently-scored images, and it is the only mode that leaves
+AUROC unchanged. It is the default.
+
+One caveat: this ablation measured patch evidence's effect on the **probability**
+only. Patch agreement still contributes 0.15 to the *confidence* score; that
+contribution has not been separately measured.
 
 ### When patch analysis is skipped
 
@@ -586,8 +681,20 @@ Regions no patch scored are left **untinted**, not drawn cold. An unmeasured
 area must not read as "confidently authentic", so the demo reports the covered
 fraction whenever it is below 100 %.
 
-A warm patch means the detector responded strongly there. That is evidence
-about where the model looked — **not proof that the region was edited.**
+### What a highlighted region is, and is not
+
+A warm patch is a **suspicious region that influenced the model's score**.
+
+It is **not**:
+
+- proof that the region was AI-edited, or edited at all;
+- a segmentation of a manipulated area;
+- a reconstruction of the image's editing or redistribution history — that
+  history is not recoverable from a single image, and this system does not
+  attempt to infer it.
+
+Treat highlighted regions as **a pointer for human review**, and read them
+alongside the whole-image score rather than instead of it.
 
 ---
 
@@ -642,7 +749,15 @@ machine-specific; relative paths resolve against the project root.
 
 ### Fusion
 
-Default mode, `whole_patch_transform`:
+Default mode, `rgb_transform`:
+
+```
+final = 0.7 · whole_image + 0.3 · mean(transformed versions)
+```
+
+Patch evidence carries **no** fusion weight: an ablation found it degraded F1
+and recall (see *Ablation result* under Patch-level analysis). The three-term
+mode `whole_patch_transform` remains available for re-testing:
 
 ```
 final = 0.60 · whole_image
@@ -735,6 +850,306 @@ optional and the DCT features are simply skipped without it.
 
 ---
 
+## Track 5 evaluation protocol
+
+A complete robustness evaluation: every official transformation, a four-way
+system ablation, failure analysis and runtime — all at **one fixed threshold**.
+
+```bash
+./.venv/bin/python scripts/evaluate_protocol.py \
+  --checkpoint models/pretrained/pytorch_model.pt \
+  --data-dir data/sid_set \
+  --limit 120 \
+  --per-class-limit 40 \
+  --device mps \
+  --output-dir outputs/protocol
+```
+
+Re-analyse a finished run in seconds without re-scoring anything:
+
+```bash
+./.venv/bin/python scripts/evaluate_protocol.py --reuse-scores
+```
+
+### How it works
+
+One scoring pass per image records the clean score, all 14 transformed-version
+scores and the patch evidence, then caches them to `outputs/protocol/scores.json`.
+Every analysis is derived from that cache, so the four systems are compared on
+**identical forward passes** rather than separate runs, and re-analysis needs no
+GPU time.
+
+### Threshold discipline
+
+The decision threshold is selected **once**, on the **clean scores of a
+validation split only**, then frozen and applied unchanged to every
+transformation and every system variant. It is never retuned per condition —
+doing so would report the best case for each transformation rather than the
+performance an operator would actually get.
+
+The validation and test splits are disjoint, assigned deterministically by
+hashing the image id, and **stratified by class** so both splits always contain
+authentic and AI-generated images. Change the sizes with
+`--validation-fraction` and `--split-seed`, and the operating point with
+`--target-fpr`.
+
+### Conditions evaluated
+
+Clean, plus every transformation the challenge specifies: JPEG quality 90/70/50/30,
+Gaussian blur σ 0.5/1.0/2.0, resize 0.5×/0.25× with upscale, Gaussian noise
+σ 0.02/0.05/0.10, colour jitter ±20 %, and centre crop retaining 80 %.
+
+### Metrics reported
+
+Accuracy, balanced accuracy, precision, recall, F1, ROC-AUC, FPR, FNR and the
+confusion matrix for every condition, plus:
+
+```
+robustness_drop  = clean_score - transformed_score
+robustness_ratio = transformed_score / clean_score
+worst_case       = min(score) across all transformations
+```
+
+Average-transformed and worst-case figures are reported separately, because an
+average hides a single catastrophic transformation.
+
+### System ablation
+
+Four systems on the same images and the same frozen threshold:
+
+| Variant | Formula |
+|---|---|
+| Whole-image only | clean score |
+| Whole + transformations | `0.7 · clean + 0.3 · mean(transformed)` |
+| Whole + patch analysis | `0.75 · clean + 0.25 · patch evidence` |
+| Complete fused system | `0.6 · clean + 0.2 · transformed + 0.2 · patch` |
+
+### Outputs
+
+```
+outputs/protocol/
+├── metrics.json          every number, plus the config snapshot and claims
+├── scores.json           the raw per-image cache (re-analysable)
+├── tables/
+│   ├── per_transformation.csv
+│   ├── system_ablation.csv
+│   ├── robustness_summary.csv
+│   └── generation_families.csv
+├── charts/
+│   ├── robustness_accuracy.png       clean vs each transformation
+│   ├── severity_accuracy.png         performance against severity
+│   ├── confusion_matrices.png        one per system variant
+│   ├── confidence_distributions.png  authentic vs AI, threshold marked
+│   ├── variant_comparison.png        the four-way ablation
+│   └── generation_families.png       per-family performance
+└── examples/
+    ├── false_positives.png           authentic images flagged as AI
+    └── false_negatives.png           AI images reported as authentic
+```
+
+### What these results may and may not claim
+
+**Dataset-source holdout — genuine.** The checkpoint records training on
+OpenFake; evaluation runs on SID_Set, a different dataset with different
+collection procedures. Cross-dataset generalisation may be claimed at the
+sample size actually evaluated.
+
+**Unseen generator — NOT established.** SID_Set does not publish per-generator
+labels. The protocol reports `full_synthetic` and `tampered` as *generation-process
+families*, which is a **proxy** showing whether performance transfers across
+generation processes within one dataset. It is **not** a generator holdout, and
+no unseen-generator claim is made. A genuine claim needs a dataset with
+per-generator labels where the evaluated generator was excluded from model
+development.
+
+**Sample size.** Figures come from the number of images actually scored, which
+is a hackathon-scale sample rather than the full split. Every table records its
+own `count`; treat wide confidence intervals accordingly.
+
+**The WildFake demonstration subset is not used** for training, model selection
+or threshold selection.
+
+---
+
+## Confidence, calibration and thresholds — measured
+
+All from cached scores in `outputs/protocol/scores.json`; reproduce with:
+
+```bash
+./.venv/bin/python scripts/evaluate_confidence.py --method platt --target-fpr 0.01 \
+  --save-calibration outputs/calibration.json
+```
+
+120 SID_Set images, **48 validation / 72 test, stratified and disjoint**.
+Calibration and thresholds are fitted on the **clean validation scores only**.
+
+### Patch agreement removed from confidence
+
+Variants compared at a fixed threshold, with the term weighted 0.15:
+
+| Variant | AUROC(confidence vs correctness) | Correct−incorrect gap | Confidence ECE |
+|---|---:|---:|---:|
+| **A. no patch agreement** | **0.7684** | **0.1450** | 0.1307 |
+| B. patch agreement always | 0.7415 | 0.1177 | 0.1348 |
+| C. patch agreement when reliable | 0.7474 | 0.1209 | 0.1256 |
+
+Accuracy, F1 and FPR were **identical** across all three (0.792 / 0.819 / 0.042),
+which confirms the term never touched the predicted probability.
+
+Including patch agreement made confidence **worse** at separating correct from
+incorrect predictions. Gating it to "reliable" patches did not rescue it. Under
+the rule fixed before the run — retain only if AUROC improves by >0.01 without
+shrinking the gap — **patch agreement is removed**:
+`confidence.patch_agreement_weight: 0.0`. Confidence is now
+`0.4·decisiveness + 0.3·version agreement + 0.3·consistency`. Patch agreement is
+still computed and shown in the UI; it simply carries no weight.
+
+### Calibration
+
+Platt scaling on clean validation scores:
+
+| | ECE | Brier |
+|---|---:|---:|
+| Uncalibrated | 0.2602 | 0.2210 |
+| **Platt** | **0.1327** | **0.1540** |
+| Temperature | 0.1653 | 0.1799 |
+
+Calibration is monotonic, so **AUROC is unchanged** (0.8568) — it fixes
+probability values, not ranking.
+
+### Threshold selection, and why the F1-optimal one was rejected
+
+All 99 thresholds 0.01–0.99 evaluated on calibrated clean validation scores.
+Measured on the **held-out test split**:
+
+| Operating point | Threshold | Accuracy | F1 | FPR | Worst-case |
+|---|---:|---:|---:|---:|---:|
+| **balanced** (Youden J) | **0.69** | **0.819** | **0.847** | **0.042** | **0.778** |
+| low-FPR | 0.78 | 0.778 | 0.805 | 0.042 | 0.736 |
+| F1-optimal | 0.53 | 0.750 | 0.816 | 0.417 | 0.681 |
+| high-recall | 0.01 | — | — | 1.000 | — |
+
+The F1-optimal threshold maximised F1 on the 48-image validation split and then
+**transferred badly** — FPR 0.417 on test. That is what a small validation set
+does to threshold selection, and it is why `balanced` is the shipped default.
+
+The FPR ≤ 1 % target was met on validation (FPR 0.000 at t=0.78) but **not on
+test** (0.042). Reported as achieved-in-validation-only, not as a guarantee.
+
+### Fixed-threshold robustness (calibrated, threshold 0.69)
+
+| | Accuracy | F1 | AUROC | FPR |
+|---|---:|---:|---:|---:|
+| Clean | 0.819 | 0.847 | 0.857 | 0.042 |
+| Average transformed | 0.809 | | | |
+| Worst case (JPEG q50) | 0.778 | | | |
+
+Largest drop **0.042**; the threshold is never retuned for any transformation.
+
+### System comparison
+
+| System | Accuracy | F1 | AUROC | FPR |
+|---|---:|---:|---:|---:|
+| 1. Whole-image RGB | 0.819 | 0.847 | 0.8568 | 0.042 |
+| 2. Whole + transformations | 0.819 | 0.847 | 0.8576 | 0.042 |
+| 3. Whole + transformations, calibrated | 0.819 | 0.847 | 0.8568 | 0.042 |
+| 4. Final system (patch excluded from scoring) | 0.819 | 0.847 | 0.8576 | 0.042 |
+
+Systems 2 and 4 are numerically identical because the final system *is*
+`rgb_transform` with patch analysis excluded from scoring — stated rather than
+presented as a separate result. Calibration changes probability values, not the
+ranking or the decisions at a matched operating point. `rgb_transform` is
+retained: nothing measurably beat it.
+
+### Two bugs found and fixed during this work
+
+- **Platt fitting diverged** on this data (slope ≈ 1.6 × 10⁸), collapsing every
+  calibrated score to exactly 0.0 or 1.0. That made all four operating points
+  identical and Brier *worse* than uncalibrated. Fixed with a backtracking line
+  search plus Platt target smoothing; both are covered by tests.
+- **A missing calibration file killed the pipeline.** `outputs/` is git-ignored,
+  so a fresh clone with calibration enabled could not run at all. It now falls
+  back to uncalibrated scores with an explicit notice.
+
+---
+
+## Measured results
+
+From `outputs/protocol/metrics.json`. **120 SID_Set validation images** (48 for
+threshold selection, **72 held-out test**), Bombek1 checkpoint, threshold
+**0.42** fixed on clean validation data and never retuned. Reproduce with
+`scripts/evaluate_protocol.py --reuse-scores`.
+
+This is a hackathon-scale sample. Treat these as indicative, not definitive.
+
+### Robustness: strong
+
+| | Accuracy | Balanced acc | F1 | AUROC | FPR |
+|---|---:|---:|---:|---:|---:|
+| Clean | 0.806 | 0.844 | 0.833 | 0.857 | 0.042 |
+| Average transformed | 0.800 | — | — | — | — |
+| **Worst case** (JPEG q50) | **0.764** | 0.802 | 0.795 | 0.837 | 0.083 |
+
+Largest drop **0.042**; robustness ratio ≥ **0.948** on every transformation.
+Four transformations slightly *improved* accuracy (centre crop 0.847, and
+JPEG q90 / blur σ1 / resize 0.5× at 0.819). No transformation caused a
+collapse — the headline robustness claim is supported.
+
+### The real weakness: locally tampered images
+
+| Family | n | Accuracy | Recall | AUROC | mean p(AI) |
+|---|---:|---:|---:|---:|---:|
+| Fully synthetic | 26 | 0.980 | 1.000 | 1.000 | 0.998 |
+| **Tampered** | 22 | **0.696** | **0.409** | **0.678** | 0.389 |
+
+**13 of 14 errors were false negatives, and all the worst were tampered
+images.** The detector is near-perfect on fully synthetic images and weak on
+locally edited ones — unsurprising, since the checkpoint was trained on
+OpenFake, a fully-synthetic corpus.
+
+### Patch analysis did not fix it — negative result
+
+All four systems scored **identically** (accuracy 0.806, F1 0.833, FPR 0.042);
+only AUROC moved, and the fused system was slightly **worse**:
+
+| System | Accuracy | F1 | AUROC |
+|---|---:|---:|---:|
+| Whole-image only | 0.806 | 0.833 | **0.857** |
+| Whole + transformations | 0.806 | 0.833 | 0.863 |
+| Whole + patches | 0.806 | 0.833 | 0.853 |
+| Complete fused | 0.806 | 0.833 | 0.852 |
+
+Diagnosis from the cached scores:
+
+- On **authentic** images patch evidence averages **0.297** against a clean
+  score of **0.081** — the max-of-many-noisy-patches inflation, which pushes
+  authentic images *toward* the AI side.
+- On **tampered** images patch evidence (0.417) barely exceeds the clean score
+  (0.383), and the two correlate at **r = 0.83** — it is largely redundant
+  rather than new information.
+- Of the 13 tampered images the whole-image model missed, patch evidence
+  rescued only **2**.
+
+The gain on tampered images and the inflation on authentic ones roughly cancel.
+**On this evidence the patch term does not earn its 0.2 weight**, and the
+default `fusion.mode: whole_patch_transform` is not justified by these numbers.
+It has deliberately **not** been changed — retuning fusion weights on 72 test
+images would be fitting to the sample. Re-measure at larger n before deciding;
+a detector trained with locally-edited examples is the more likely real fix.
+
+### Runtime
+
+13.34 s per image on MPS for 27 forward passes (1 clean + 14 transformed + 12
+patches). Roughly 1 s per forward pass end to end.
+
+### What these numbers do not establish
+
+Cross-**generator** generalisation. SID_Set publishes no per-generator labels,
+so the family split above is a proxy. The **dataset-source holdout is genuine**
+(trained on OpenFake, evaluated on SID_Set).
+
+---
+
 ## Benchmarking against a labelled dataset
 
 Optional tooling for measuring real accuracy and robustness using
@@ -767,11 +1182,21 @@ model was trained on — the resulting numbers are meaningless.
 ## Probability Calibration and Threshold Selection
 
 Raw sigmoid/softmax scores are often overconfident, so a raw score of 0.5 is
-not automatically a reliable decision boundary. This project uses Platt
-scaling: a two-parameter logistic mapping is fitted on the model's raw scores
-from clean labelled validation images. The fitted parameters are saved and
-loaded during inference. Calibration does not use transformed images, test
-images, or demo uploads.
+not automatically a reliable decision boundary.
+
+Two calibrators are available, both fitted on the model's raw scores from
+**clean labelled validation images only**:
+
+| `--method` | Parameters | Effect |
+|---|---|---|
+| `platt` (default) | slope + intercept | Full logistic remap; can shift the decision boundary |
+| `temperature` | slope only (intercept pinned at 0) | Sharpens or softens confidence; **cannot reorder scores or move the boundary on its own** |
+
+Temperature scaling is the standard single-parameter choice when a model ranks
+well but is over-confident. Its fitted temperature `T` (where slope = 1/T) is
+recorded in the saved parameters. The fitted parameters are saved and loaded
+during inference. Calibration never uses transformed images, test images, or
+demo uploads.
 
 Fit once, against a checkpoint you have already downloaded:
 
@@ -784,22 +1209,68 @@ Fit once, against a checkpoint you have already downloaded:
   --report outputs/calibration_report.json
 ```
 
-The command accepts only the SID_Set `validation` shard split. It evaluates
-thresholds from 0.01 through 0.99 and saves three operating points: a balanced
-threshold (Youden's J), the lowest threshold meeting a 1% false-positive-rate
-target when possible, and a highest-recall threshold. It then evaluates the
-balanced threshold unchanged on clean images and every configured
-transformation. If the 1% target is not achievable, the report records that
-fact and selects the closest available candidate.
+Add `--method temperature` to fit the single-parameter calibrator instead.
 
-After calibration, set `calibration.enabled: true` in `configs/config.yaml`.
-The saved balanced threshold is then loaded automatically and used consistently
-for every transformation; no transformation receives its own retuned threshold.
+The command accepts only the SID_Set `validation` shard split. It evaluates
+all 99 thresholds from 0.01 through 0.99, computing accuracy, precision,
+recall, F1, balanced accuracy, FPR, FNR and Youden's J at each, and saves
+**four operating points**:
+
+| Operating point | Selection rule | Use when |
+|---|---|---|
+| `balanced` | maximises Youden's J | general use; the default |
+| `f1_optimal` | maximises F1 | precision and recall matter equally |
+| `low_false_positive` | lowest threshold with FPR ≤ target (default 1 %) | false accusations are costly |
+| `high_recall` | maximises recall | missing an AI image is costly |
+
+It then evaluates the chosen threshold **unchanged** on clean images and every
+configured transformation. If the FPR target is not achievable the report
+records that fact and selects the closest available candidate.
+
+After calibration, set `calibration.enabled: true` in `configs/config.yaml` and
+pick the operating point:
+
+```yaml
+calibration:
+  enabled: true
+  path: outputs/calibration.json
+  method: platt                # platt | temperature
+  operating_point: balanced    # balanced | f1_optimal | low_false_positive | high_recall
+  target_false_positive_rate: 0.01
+  uncertainty_margin: 0.10     # sets the Uncertain band around the threshold
+```
+
+The saved threshold is then loaded automatically and used consistently for
+every transformation; **no transformation receives its own retuned threshold.**
 The detailed report includes accuracy, precision, recall, F1, specificity,
 false-positive/negative rates, balanced accuracy, Youden's J, ROC-AUC,
 calibrated probability statistics, reliability diagrams, ECE, Brier score,
 confidence-bin accuracy, ROC/precision-recall curves, and a clean-versus-
 transformed chart.
+
+### Four states the demo keeps distinct
+
+Presenting a raw score beside a default threshold as though both came from data
+would overstate what the system knows, so the demo labels each explicitly:
+
+| State | Shown as |
+|---|---|
+| Calibrated probability | green — names the method and fitted temperature |
+| Uncalibrated model score | amber — "ranks images but is not a calibrated probability" |
+| Data-derived threshold | green — names the operating point it came from |
+| Interface default threshold | amber — "not derived from labelled validation data" |
+
+`DetectionPipeline.calibration_status()` returns this programmatically.
+
+### When labelled validation data is unavailable
+
+No calibration metrics are invented. Without labelled clean validation images
+`scripts/calibrate_threshold.py` cannot run, the pipeline keeps the 0.5
+interface default with the 0.40 / 0.60 label bands, and both the demo and
+`calibration_status()` report them as interface defaults. The missing
+requirement is **labelled clean validation images with both authentic and
+AI-generated examples**; threshold selection raises rather than proceeding if
+the validation split contains only one class.
 
 The methodology is motivated by *Your AI-Generated Image Detector Can Secretly
 Achieve SOTA Accuracy, If Calibrated*, *Fixed-Threshold Evaluation of a Hybrid

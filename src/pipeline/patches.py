@@ -23,10 +23,12 @@ evidence about the model's attention, **not** proof that the region was edited.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+import torch
 from PIL import Image
 
 from src.evaluation.calibration import ProbabilityCalibrator
@@ -41,8 +43,19 @@ DEFAULT_TOP_K = 3
 DEFAULT_HEATMAP_THRESHOLD = 0.5
 DEFAULT_MAX_PATCHES = 12
 DEFAULT_EVIDENCE = "top_k_mean"
+DEFAULT_COARSE_MAX_PATCHES = 4
+DEFAULT_REFINE_FACTOR = 2
+DEFAULT_UNCERTAIN_BAND = (0.2, 0.8)
 
 EVIDENCE_STATISTICS = ("top_k_mean", "max", "mean")
+
+# Analysis modes, cheapest first.
+MODE_OFF = "off"  # no patch scoring at all
+MODE_COARSE = "coarse"  # one small grid
+MODE_FULL = "full"  # one dense grid, capped by max_patches
+MODE_TOP_K = "top_k"  # coarse grid, then refine the top-k regions
+MODE_UNCERTAIN_ONLY = "uncertain_only"  # run base_mode only for undecided images
+PATCH_MODES = (MODE_OFF, MODE_COARSE, MODE_FULL, MODE_TOP_K, MODE_UNCERTAIN_ONLY)
 
 
 @dataclass(frozen=True)
@@ -84,6 +97,11 @@ class PatchReport:
     heatmap: Optional[np.ndarray] = None
     coverage: Optional[np.ndarray] = None
     settings: Dict[str, Any] = field(default_factory=dict)
+    mode: str = MODE_FULL
+    forward_passes: int = 0
+    reused_scores: int = 0
+    seconds: float = 0.0
+    peak_memory_mb: Optional[float] = None
 
     def as_dict(self) -> Dict[str, Any]:
         """JSON-safe summary. The raw heatmap array is omitted."""
@@ -103,6 +121,13 @@ class PatchReport:
             "highest_risk_region": self.highest_risk_region,
             "top_patches": [patch.as_dict() for patch in self.top_patches],
             "patches": [patch.as_dict() for patch in self.patches],
+            "mode": self.mode,
+            "forward_passes": self.forward_passes,
+            "reused_scores": self.reused_scores,
+            "seconds": round(float(self.seconds), 4),
+            "peak_memory_mb": (
+                None if self.peak_memory_mb is None else round(float(self.peak_memory_mb), 2)
+            ),
             "has_heatmap": self.heatmap is not None,
             "heatmap_coverage": (
                 None if self.coverage is None else round(float(self.coverage.mean()), 6)
@@ -117,6 +142,15 @@ def patch_settings(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     section = (config or {}).get("patches", {}) or {}
     settings = {
         "enabled": bool(section.get("enabled", True)),
+        "mode": str(section.get("mode", MODE_FULL)),
+        "base_mode": str(section.get("base_mode", MODE_FULL)),
+        "coarse_max_patches": int(section.get("coarse_max_patches", DEFAULT_COARSE_MAX_PATCHES)),
+        "refine_factor": int(section.get("refine_factor", DEFAULT_REFINE_FACTOR)),
+        "uncertain_band": tuple(
+            float(v) for v in section.get("uncertain_band", DEFAULT_UNCERTAIN_BAND)
+        ),
+        "batch_size": section.get("batch_size"),
+        "device": section.get("device"),
         "patch_size": int(section.get("patch_size", DEFAULT_PATCH_SIZE)),
         "stride": int(section.get("stride", DEFAULT_STRIDE)),
         "min_patch_size": int(section.get("min_patch_size", DEFAULT_MIN_PATCH_SIZE)),
@@ -141,6 +175,21 @@ def patch_settings(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         raise ValueError(
             f"patches.evidence_statistic must be one of {', '.join(EVIDENCE_STATISTICS)}"
         )
+    if settings["mode"] not in PATCH_MODES:
+        raise ValueError(f"patches.mode must be one of {', '.join(PATCH_MODES)}")
+    if settings["base_mode"] not in (MODE_COARSE, MODE_FULL, MODE_TOP_K):
+        raise ValueError(
+            f"patches.base_mode must be one of {MODE_COARSE}, {MODE_FULL}, {MODE_TOP_K}"
+        )
+    if settings["coarse_max_patches"] <= 0:
+        raise ValueError("patches.coarse_max_patches must be positive")
+    if settings["refine_factor"] < 1:
+        raise ValueError("patches.refine_factor must be at least 1")
+    band = settings["uncertain_band"]
+    if len(band) != 2 or not 0.0 <= band[0] <= band[1] <= 1.0:
+        raise ValueError("patches.uncertain_band must be an ascending pair within [0, 1]")
+    if settings["batch_size"] is not None and int(settings["batch_size"]) <= 0:
+        raise ValueError("patches.batch_size must be positive when set")
     return settings
 
 
@@ -239,34 +288,33 @@ def analyse_patches(
     whole_image_probability: Optional[float] = None,
     calibrator: Optional[ProbabilityCalibrator] = None,
 ) -> PatchReport:
-    """Score overlapping patches and reconstruct a risk heatmap.
+    """Score patches and reconstruct a risk heatmap, under the configured mode.
 
     Never raises: any failure is reported as an unavailable :class:`PatchReport`
     so the surrounding pipeline keeps its whole-image result.
     """
 
+    started = time.time()
     try:
         settings = patch_settings(config)
     except ValueError as exc:
         return PatchReport(available=False, message=f"Invalid patch configuration: {exc}")
 
-    if not settings["enabled"]:
+    mode, skip_reason = resolve_mode(settings, whole_image_probability)
+    if mode == MODE_OFF:
         return PatchReport(
             available=False,
-            message="Patch-level analysis is disabled in the configuration.",
+            message=skip_reason or "Patch-level analysis is disabled in the configuration.",
             settings=settings,
+            mode=MODE_OFF,
+            seconds=time.time() - started,
         )
 
     rgb = image.convert("RGB")
     width, height = rgb.size
-    boxes = generate_patch_boxes(
-        width,
-        height,
-        patch_size=settings["patch_size"],
-        stride=settings["stride"],
-        min_patch_size=settings["min_patch_size"],
-        max_patches=settings["max_patches"],
-    )
+
+    grid_mode = MODE_COARSE if mode == MODE_TOP_K else mode
+    boxes = _boxes_for_mode(grid_mode, settings, width, height)
     if not boxes:
         return PatchReport(
             available=False,
@@ -276,8 +324,10 @@ def analyse_patches(
                 f"analysis was skipped. The whole-image result is unaffected."
             ),
             settings=settings,
+            mode=mode,
+            seconds=time.time() - started,
         )
-    if len(boxes) < 2:
+    if len(boxes) < 2 and mode != MODE_TOP_K:
         # A single box spanning the whole image would just re-measure the
         # whole-image score. Feeding that back as independent "patch evidence"
         # would double-count one measurement and make patch agreement
@@ -290,18 +340,33 @@ def analyse_patches(
                 f"whole-image result is unaffected."
             ),
             settings=settings,
+            mode=mode,
+            seconds=time.time() - started,
         )
 
+    batch_size = settings["batch_size"] or int(
+        (config or {}).get("inference", {}).get("batch_size", 8)
+    )
+    scorer = PatchScorer(bundle, preprocessor, rgb, int(batch_size), whole_image_probability)
+
     try:
-        crops = [rgb.crop((x, y, x + w, y + h)) for x, y, w, h in boxes]
-        raw_scores = predict_images(
-            bundle,
-            crops,
-            preprocessor,
-            batch_size=int((config or {}).get("inference", {}).get("batch_size", 8)),
-        )
+        raw = scorer.score(boxes)
+
+        if mode == MODE_TOP_K:
+            # Second pass: refine only the most suspicious coarse regions, so
+            # detail is bought where it might matter instead of everywhere.
+            ranked = sorted(zip(boxes, raw), key=lambda pair: pair[1], reverse=True)
+            focus = [box for box, _ in ranked[: settings["top_k"]]]
+            children = refine_boxes(
+                focus, settings["refine_factor"], settings["min_patch_size"], width, height
+            )
+            children = children[: max(0, settings["max_patches"] - len(boxes))]
+            if children:
+                boxes = list(boxes) + children
+                raw = list(raw) + scorer.score(children)
+
         scores = (
-            calibrator.transform(raw_scores) if calibrator is not None else np.asarray(raw_scores)
+            calibrator.transform(np.asarray(raw)) if calibrator is not None else np.asarray(raw)
         )
         scores = np.clip(np.asarray(scores, dtype=np.float64), 0.0, 1.0)
     except (RuntimeError, ValueError, OSError, MemoryError) as exc:
@@ -312,6 +377,8 @@ def analyse_patches(
                 f"The whole-image result is unaffected."
             ),
             settings=settings,
+            mode=mode,
+            seconds=time.time() - started,
         )
 
     patches = [
@@ -335,9 +402,9 @@ def analyse_patches(
     return PatchReport(
         available=True,
         message=(
-            f"Scored {len(patches)} overlapping patches. Warmer regions produced higher "
-            f"synthetic-image signals; this indicates where the detector responded, not "
-            f"proof that a region was edited."
+            f"Scored {len(patches)} overlapping patches ({mode} mode). Warmer regions are "
+            f"suspicious regions that influenced the model, not proof that a region was "
+            f"edited and not a reconstruction of any editing history."
         ),
         patches=patches,
         top_patches=top_patches,
@@ -350,6 +417,11 @@ def analyse_patches(
         heatmap=heatmap,
         coverage=coverage,
         settings=settings,
+        mode=mode,
+        forward_passes=scorer.forward_passes,
+        reused_scores=scorer.reused,
+        seconds=time.time() - started,
+        peak_memory_mb=_peak_memory_mb(bundle.device),
     )
 
 
@@ -400,3 +472,173 @@ def overlay_patch_heatmap(
                 blended[top : bottom + 1, left] = (255, 255, 255)
                 blended[top : bottom + 1, right] = (255, 255, 255)
     return blended
+
+
+# ---------------------------------------------------------------------------
+# Cost instrumentation
+# ---------------------------------------------------------------------------
+
+
+def _peak_memory_mb(device: Any) -> Optional[float]:
+    """Best-effort peak allocation for the active device, in MB."""
+
+    try:
+        kind = getattr(device, "type", str(device))
+        if kind == "cuda":
+            return float(torch.cuda.max_memory_allocated()) / 1e6
+        if kind == "mps" and hasattr(torch, "mps"):
+            current = getattr(torch.mps, "current_allocated_memory", None)
+            if current is not None:
+                return float(current()) / 1e6
+        import resource
+
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports kilobytes, macOS reports bytes.
+        return float(usage) / (1e6 if usage > 1e9 else 1e3)
+    except (RuntimeError, ValueError, ImportError, AttributeError):  # pragma: no cover
+        return None
+
+
+class PatchScorer:
+    """Scores patch boxes with batching, caching and whole-image reuse.
+
+    Two savings matter. A box covering the whole image is the whole-image score
+    already computed upstream, so it is reused rather than recomputed. And any
+    box requested twice -- which the two-stage ``top_k`` mode can do -- is
+    served from the cache. Both are counted so the ablation can show the work
+    actually avoided.
+    """
+
+    def __init__(
+        self,
+        bundle: ModelBundle,
+        preprocessor: Preprocessor,
+        image: Image.Image,
+        batch_size: int,
+        whole_image_probability: Optional[float] = None,
+    ) -> None:
+        self.bundle = bundle
+        self.preprocessor = preprocessor
+        self.image = image
+        self.batch_size = max(1, int(batch_size))
+        self.whole_image_probability = whole_image_probability
+        self._cache: Dict[Tuple[int, int, int, int], float] = {}
+        self.forward_passes = 0
+        self.reused = 0
+
+    def _covers_whole_image(self, box: Tuple[int, int, int, int]) -> bool:
+        width, height = self.image.size
+        x, y, w, h = box
+        return x == 0 and y == 0 and w == width and h == height
+
+    def score(self, boxes: Sequence[Tuple[int, int, int, int]]) -> List[float]:
+        """Return one probability per box, running the model only where needed."""
+
+        pending: List[Tuple[int, int, int, int]] = []
+        for box in boxes:
+            if box in self._cache:
+                continue
+            if self.whole_image_probability is not None and self._covers_whole_image(box):
+                # Identical to the whole-image forward pass already performed.
+                self._cache[box] = float(self.whole_image_probability)
+                self.reused += 1
+                continue
+            pending.append(box)
+
+        if pending:
+            # predict_images batches internally and runs under inference_mode.
+            crops = [self.image.crop((x, y, x + w, y + h)) for x, y, w, h in pending]
+            scores = predict_images(
+                self.bundle, crops, self.preprocessor, batch_size=self.batch_size
+            )
+            self.forward_passes += len(pending)
+            for box, score in zip(pending, scores):
+                self._cache[box] = float(score)
+
+        return [self._cache[box] for box in boxes]
+
+
+def refine_boxes(
+    boxes: Sequence[Tuple[int, int, int, int]],
+    factor: int,
+    min_patch_size: int,
+    width: int,
+    height: int,
+) -> List[Tuple[int, int, int, int]]:
+    """Subdivide each box into ``factor x factor`` children.
+
+    Used by ``top_k`` mode to spend a second, cheaper pass only where the coarse
+    pass already found signal, instead of refining the whole image.
+    """
+
+    if factor < 2:
+        return []
+    children: List[Tuple[int, int, int, int]] = []
+    for x, y, box_width, box_height in boxes:
+        child_width = box_width // factor
+        child_height = box_height // factor
+        if min(child_width, child_height) < min_patch_size:
+            continue
+        for row in range(factor):
+            for column in range(factor):
+                cx = min(x + column * child_width, width - child_width)
+                cy = min(y + row * child_height, height - child_height)
+                children.append((cx, cy, child_width, child_height))
+    # Deduplicate while preserving order.
+    seen = set()
+    unique = []
+    for box in children:
+        if box not in seen:
+            seen.add(box)
+            unique.append(box)
+    return unique
+
+
+def _boxes_for_mode(
+    mode: str, settings: Dict[str, Any], width: int, height: int
+) -> List[Tuple[int, int, int, int]]:
+    """Grid for a single-pass mode."""
+
+    max_patches = settings["coarse_max_patches"] if mode == MODE_COARSE else settings["max_patches"]
+    stride = (
+        settings["stride"]
+        if mode != MODE_COARSE
+        else max(settings["stride"], settings["patch_size"])
+    )
+    return generate_patch_boxes(
+        width,
+        height,
+        patch_size=settings["patch_size"],
+        stride=stride,
+        min_patch_size=settings["min_patch_size"],
+        max_patches=max_patches,
+    )
+
+
+def resolve_mode(
+    settings: Dict[str, Any], whole_image_probability: Optional[float]
+) -> Tuple[str, Optional[str]]:
+    """Resolve the effective mode, returning ``(mode, skip_reason)``.
+
+    ``uncertain_only`` is the early-stopping path: an image the whole-image
+    model already calls confidently gains little from patch scoring, so the
+    patches are skipped entirely and the forward passes are never spent.
+    """
+
+    mode = settings["mode"]
+    if not settings["enabled"] or mode == MODE_OFF:
+        return MODE_OFF, "Patch-level analysis is disabled in the configuration."
+
+    if mode == MODE_UNCERTAIN_ONLY:
+        low, high = settings["uncertain_band"]
+        if whole_image_probability is None:
+            return settings["base_mode"], None
+        if not low <= float(whole_image_probability) <= high:
+            return MODE_OFF, (
+                f"Whole-image score {float(whole_image_probability):.3f} is outside the "
+                f"uncertain band [{low:.2f}, {high:.2f}], so patch analysis was skipped "
+                f"(early stop). The whole-image result is unaffected."
+            )
+        return settings["base_mode"], None
+
+    return mode, None

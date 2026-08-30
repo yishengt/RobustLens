@@ -36,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=300)
     parser.add_argument("--per-class-limit", type=int, default=None)
     parser.add_argument("--target-fpr", type=float, default=None)
+    parser.add_argument(
+        "--method",
+        default="platt",
+        choices=["platt", "temperature"],
+        help="platt fits slope+intercept; temperature fits slope only (no boundary shift)",
+    )
     parser.add_argument("--device", choices=["auto", "cpu", "cuda", "mps"], default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser
@@ -106,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             if not args.quiet and len(labels) % 25 == 0:
                 print(f"Collected {len(labels)} clean validation images", file=sys.stderr)
-        calibrator = ProbabilityCalibrator.fit(raw_scores, labels, input_type="probabilities")
+        calibrator = ProbabilityCalibrator.fit(
+            raw_scores, labels, input_type="probabilities", method=args.method
+        )
         calibrated_scores = calibrator.transform(raw_scores)
         selection = search_thresholds(labels, calibrated_scores, args.target_fpr)
         calibrator = ProbabilityCalibrator(
@@ -117,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             fitted_on="clean_validation",
             selected_thresholds={
                 "balanced": selection.balanced,
+                "f1_optimal": selection.f1_optimal,
                 "low_false_positive": selection.low_false_positive,
                 "high_recall": selection.high_recall,
             },

@@ -125,23 +125,29 @@ class ConfigurationTest(unittest.TestCase):
         for channel in ("brightness", "contrast", "saturation"):
             self.assertAlmostEqual(settings["color_jitter"][channel], 0.2)
 
-    def test_default_fusion_is_whole_patch_transform(self) -> None:
-        """Default: 60 % whole image, 20 % transformed mean, 20 % patch evidence."""
+    def test_default_fusion_excludes_patch_evidence(self) -> None:
+        """Patch evidence was demoted on measured evidence, not preference.
 
-        self.assertEqual(self.config["fusion"]["mode"], "whole_patch_transform")
+        scripts/ablate_patches.py found every patch mode scored worse than
+        whole-image-only, so patch evidence carries no fusion weight. It stays
+        available as an explainability heatmap.
+        """
+
+        self.assertEqual(self.config["fusion"]["mode"], "rgb_transform")
+        self.assertAlmostEqual(self.config["fusion"]["original_weight"], 0.7)
+        self.assertAlmostEqual(self.config["fusion"]["transform_weight"], 0.3)
+
+    def test_patch_fusion_weights_remain_configured(self) -> None:
+        """The three-term mode stays available for re-testing after a retrain."""
+
         weights = self.config["fusion"]["whole_patch"]
         self.assertAlmostEqual(weights["whole_weight"], 0.6)
         self.assertAlmostEqual(weights["transform_weight"], 0.2)
         self.assertAlmostEqual(weights["patch_weight"], 0.2)
-        self.assertAlmostEqual(
-            weights["whole_weight"] + weights["transform_weight"] + weights["patch_weight"], 1.0
-        )
 
-    def test_two_term_fusion_weights_remain_available(self) -> None:
-        """The simpler rgb_transform mode stays configured for fallback use."""
-
-        self.assertAlmostEqual(self.config["fusion"]["original_weight"], 0.7)
-        self.assertAlmostEqual(self.config["fusion"]["transform_weight"], 0.3)
+    def test_patch_analysis_stays_enabled_for_explainability(self) -> None:
+        self.assertTrue(self.config["patches"]["enabled"])
+        self.assertEqual(self.config["patches"]["mode"], "uncertain_only")
 
     def test_patch_section_is_present(self) -> None:
         patches = self.config["patches"]

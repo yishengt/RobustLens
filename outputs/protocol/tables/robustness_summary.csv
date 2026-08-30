@@ -1,0 +1,6 @@
+metric,clean,average_transformed,worst_case,worst_transformation,largest_drop,average_ratio
+accuracy,0.805556,0.799603,0.763889,jpeg_q50,0.041667,0.99261
+balanced_accuracy,0.84375,0.83631,0.802083,jpeg_q50,0.041667,0.991182
+f1,0.833333,0.828163,0.795181,jpeg_q50,0.038152,0.993796
+auc,0.856771,0.858197,0.833333,jpeg_q30,0.023438,1.001665
+recall,0.729167,0.726191,0.666667,jpeg_q30,0.0625,0.995918
