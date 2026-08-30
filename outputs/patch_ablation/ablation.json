@@ -1,0 +1,244 @@
+{
+  "question": "Does patch analysis improve F1, recall, FPR or robustness enough to be a scoring component?",
+  "model": {
+    "architecture": "bombek_siglip2_dinov2",
+    "num_classes": 1,
+    "num_parameters": 740371777,
+    "parameters_millions": 740.37,
+    "under_2b_parameter_limit": true,
+    "checkpoint_path": "models/pretrained/pytorch_model.pt",
+    "device": "mps (Apple Metal)",
+    "input_kind": "dual"
+  },
+  "device": "mps (Apple Metal)",
+  "threshold": 0.42,
+  "threshold_note": "Frozen across every mode; never retuned per mode.",
+  "images": 60,
+  "patch_settings": {
+    "enabled": true,
+    "patch_size": 256,
+    "stride": 192,
+    "min_patch_size": 64,
+    "max_patches": 12,
+    "top_k": 3,
+    "heatmap_threshold": 0.5,
+    "evidence_statistic": "top_k_mean"
+  },
+  "modes": {
+    "off": {
+      "metrics": {
+        "count": 60,
+        "positives": 40,
+        "negatives": 20,
+        "threshold": 0.42,
+        "accuracy": 0.75,
+        "precision": 0.962963,
+        "recall": 0.65,
+        "f1": 0.776119,
+        "specificity": 0.95,
+        "false_positive_rate": 0.05,
+        "false_negative_rate": 0.35,
+        "balanced_accuracy": 0.8,
+        "youden_j": 0.6,
+        "auc": 0.84375,
+        "average_precision": 0.934096,
+        "confusion_matrix": {
+          "true_positives": 26,
+          "false_positives": 1,
+          "true_negatives": 19,
+          "false_negatives": 14
+        }
+      },
+      "images": 60,
+      "patch_available": 0,
+      "mean_forward_passes": 0.0,
+      "total_forward_passes": 0,
+      "mean_seconds_per_image": 0.5619,
+      "mean_coverage": null,
+      "peak_memory_mb": null,
+      "decisions_changed": 0,
+      "reused_scores": 0,
+      "delta_vs_whole_image_only": {
+        "accuracy": 0.0,
+        "balanced_accuracy": 0.0,
+        "f1": 0.0,
+        "recall": 0.0,
+        "false_positive_rate": 0.0,
+        "auc": 0.0
+      }
+    },
+    "coarse": {
+      "metrics": {
+        "count": 60,
+        "positives": 40,
+        "negatives": 20,
+        "threshold": 0.42,
+        "accuracy": 0.733333,
+        "precision": 0.961538,
+        "recall": 0.625,
+        "f1": 0.757576,
+        "specificity": 0.95,
+        "false_positive_rate": 0.05,
+        "false_negative_rate": 0.375,
+        "balanced_accuracy": 0.7875,
+        "youden_j": 0.575,
+        "auc": 0.8375,
+        "average_precision": 0.930203,
+        "confusion_matrix": {
+          "true_positives": 25,
+          "false_positives": 1,
+          "true_negatives": 19,
+          "false_negatives": 15
+        }
+      },
+      "images": 60,
+      "patch_available": 60,
+      "mean_forward_passes": 4.0,
+      "total_forward_passes": 240,
+      "mean_seconds_per_image": 2.4908,
+      "mean_coverage": 0.2781,
+      "peak_memory_mb": 2105.04,
+      "decisions_changed": 1,
+      "reused_scores": 0,
+      "delta_vs_whole_image_only": {
+        "accuracy": -0.016667,
+        "balanced_accuracy": -0.0125,
+        "f1": -0.018543,
+        "recall": -0.025,
+        "false_positive_rate": 0.0,
+        "auc": -0.00625
+      }
+    },
+    "full": {
+      "metrics": {
+        "count": 60,
+        "positives": 40,
+        "negatives": 20,
+        "threshold": 0.42,
+        "accuracy": 0.733333,
+        "precision": 0.961538,
+        "recall": 0.625,
+        "f1": 0.757576,
+        "specificity": 0.95,
+        "false_positive_rate": 0.05,
+        "false_negative_rate": 0.375,
+        "balanced_accuracy": 0.7875,
+        "youden_j": 0.575,
+        "auc": 0.81125,
+        "average_precision": 0.920871,
+        "confusion_matrix": {
+          "true_positives": 25,
+          "false_positives": 1,
+          "true_negatives": 19,
+          "false_negatives": 15
+        }
+      },
+      "images": 60,
+      "patch_available": 60,
+      "mean_forward_passes": 12.0,
+      "total_forward_passes": 720,
+      "mean_seconds_per_image": 6.2621,
+      "mean_coverage": 0.7015,
+      "peak_memory_mb": 2105.04,
+      "decisions_changed": 1,
+      "reused_scores": 0,
+      "delta_vs_whole_image_only": {
+        "accuracy": -0.016667,
+        "balanced_accuracy": -0.0125,
+        "f1": -0.018543,
+        "recall": -0.025,
+        "false_positive_rate": 0.0,
+        "auc": -0.0325
+      }
+    },
+    "top_k": {
+      "metrics": {
+        "count": 60,
+        "positives": 40,
+        "negatives": 20,
+        "threshold": 0.42,
+        "accuracy": 0.733333,
+        "precision": 0.961538,
+        "recall": 0.625,
+        "f1": 0.757576,
+        "specificity": 0.95,
+        "false_positive_rate": 0.05,
+        "false_negative_rate": 0.375,
+        "balanced_accuracy": 0.7875,
+        "youden_j": 0.575,
+        "auc": 0.8175,
+        "average_precision": 0.922784,
+        "confusion_matrix": {
+          "true_positives": 25,
+          "false_positives": 1,
+          "true_negatives": 19,
+          "false_negatives": 15
+        }
+      },
+      "images": 60,
+      "patch_available": 60,
+      "mean_forward_passes": 12.0,
+      "total_forward_passes": 720,
+      "mean_seconds_per_image": 6.4125,
+      "mean_coverage": 0.2781,
+      "peak_memory_mb": 2105.04,
+      "decisions_changed": 1,
+      "reused_scores": 0,
+      "delta_vs_whole_image_only": {
+        "accuracy": -0.016667,
+        "balanced_accuracy": -0.0125,
+        "f1": -0.018543,
+        "recall": -0.025,
+        "false_positive_rate": 0.0,
+        "auc": -0.02625
+      }
+    },
+    "uncertain_only": {
+      "metrics": {
+        "count": 60,
+        "positives": 40,
+        "negatives": 20,
+        "threshold": 0.42,
+        "accuracy": 0.733333,
+        "precision": 0.961538,
+        "recall": 0.625,
+        "f1": 0.757576,
+        "specificity": 0.95,
+        "false_positive_rate": 0.05,
+        "false_negative_rate": 0.375,
+        "balanced_accuracy": 0.7875,
+        "youden_j": 0.575,
+        "auc": 0.84375,
+        "average_precision": 0.934096,
+        "confusion_matrix": {
+          "true_positives": 25,
+          "false_positives": 1,
+          "true_negatives": 19,
+          "false_negatives": 15
+        }
+      },
+      "images": 60,
+      "patch_available": 8,
+      "mean_forward_passes": 1.6,
+      "total_forward_passes": 96,
+      "mean_seconds_per_image": 1.3262,
+      "mean_coverage": 0.6791,
+      "peak_memory_mb": 2105.04,
+      "decisions_changed": 1,
+      "reused_scores": 0,
+      "delta_vs_whole_image_only": {
+        "accuracy": -0.016667,
+        "balanced_accuracy": -0.0125,
+        "f1": -0.018543,
+        "recall": -0.025,
+        "false_positive_rate": 0.0,
+        "auc": 0.0
+      }
+    }
+  },
+  "verdict": {
+    "conclusion": "keep_as_explainability_only",
+    "modes_that_improved": [],
+    "reason": "no patch mode improved F1 or recall without raising the false-positive rate, so patch evidence does not earn a weight in fusion. Keep patch analysis as an optional explainability feature: set fusion.mode to rgb_transform and leave patches enabled for the heatmap only."
+  }
+}

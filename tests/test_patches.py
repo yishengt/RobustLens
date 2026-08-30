@@ -14,18 +14,25 @@ from pathlib import Path
 
 import numpy as np
 
+from src.pipeline.model_loader import load_model
 from src.pipeline.patches import (
     PatchReport,
+    PatchScorer,
+    analyse_patches,
     build_heatmap,
     generate_patch_boxes,
     overlay_patch_heatmap,
     patch_settings,
+    refine_boxes,
 )
 from src.pipeline.pipeline import DetectionPipeline
+from src.pipeline.preprocessing import Preprocessor
 from tests.helpers import base_config, make_image, write_mock_checkpoint
 
 
 def patch_config(**overrides):
+    """Base config for patch tests; overrides land in the patches block."""
+
     config = base_config()
     config["transformations"]["enabled"] = False  # keep the mock runs fast
     config["patches"] = {
@@ -183,10 +190,22 @@ class PatchPipelineTest(unittest.TestCase):
         self.assertIn("patch", result.fusion.weights)
         self.assertIn("patch_evidence", result.fusion.components)
 
-    def test_patch_agreement_reaches_confidence(self) -> None:
-        result = self.build().analyse_image(make_image(width=300, height=300))
-        self.assertIsNotNone(result.confidence.patch_agreement)
-        self.assertIn("patch_agreement", result.confidence.weights)
+    def test_patch_agreement_is_excluded_from_confidence(self) -> None:
+        """Removed on evidence: it made confidence worse at spotting errors.
+
+        scripts/evaluate_confidence.py measured AUROC(confidence vs correctness)
+        falling from 0.767 to 0.737 when patch agreement was included. The patch
+        report still computes agreement for display; it just carries no weight.
+        """
+
+        config = patch_config()
+        config["confidence"]["patch_agreement_weight"] = 0.0
+        result = DetectionPipeline.from_checkpoint(
+            self.checkpoint, config, device="cpu", explain_images=False
+        ).analyse_image(make_image(width=300, height=300))
+
+        self.assertNotIn("patch_agreement", result.confidence.weights)
+        self.assertIsNotNone(result.patches.agreement)  # still reported for the UI
 
     def test_disabled_patches_fall_back_safely(self) -> None:
         result = self.build(patch_config(enabled=False)).analyse_image(
@@ -278,3 +297,197 @@ class PatchPipelineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PatchModeTest(unittest.TestCase):
+    """Modes, cost instrumentation and the early-stop gate."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.tmp = Path(cls._tmp.name)
+        cls.checkpoint = write_mock_checkpoint(cls.tmp / "mock.pt")
+        cls.bundle = load_model(cls.checkpoint, base_config(), device="cpu")
+        cls.preprocessor = Preprocessor.from_config(base_config())
+        cls.image = make_image(width=300, height=220, seed=5)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def run_mode(self, mode: str, whole: float = 0.5, **overrides):
+        options = {"max_patches": 12, "coarse_max_patches": 4, "refine_factor": 2}
+        options.update(overrides)
+        config = patch_config(mode=mode, **options)
+        return analyse_patches(
+            self.bundle, self.image, self.preprocessor, config, whole_image_probability=whole
+        )
+
+    def test_off_mode_spends_nothing(self) -> None:
+        report = self.run_mode("off")
+        self.assertFalse(report.available)
+        self.assertEqual(report.forward_passes, 0)
+
+    def test_coarse_is_cheaper_than_full(self) -> None:
+        coarse = self.run_mode("coarse")
+        full = self.run_mode("full")
+        self.assertLess(coarse.forward_passes, full.forward_passes)
+        self.assertLessEqual(len(coarse.patches), len(full.patches))
+
+    def test_full_covers_more_than_coarse(self) -> None:
+        coarse = self.run_mode("coarse")
+        full = self.run_mode("full")
+        self.assertGreater(float(full.coverage.mean()), float(coarse.coverage.mean()))
+
+    def test_top_k_refines_into_smaller_patches(self) -> None:
+        """The second pass buys detail inside the chosen regions."""
+
+        report = self.run_mode("top_k")
+        self.assertTrue(report.available)
+        sizes = {patch.width for patch in report.patches}
+        self.assertGreater(len(sizes), 1)  # coarse boxes plus refined children
+
+    def test_uncertain_only_skips_confident_images(self) -> None:
+        for whole in (0.02, 0.99):
+            with self.subTest(whole_score=whole):
+                report = self.run_mode("uncertain_only", whole=whole, base_mode="coarse")
+                self.assertFalse(report.available)
+                self.assertEqual(report.forward_passes, 0)
+                self.assertIn("early stop", report.message)
+
+    def test_uncertain_only_runs_for_undecided_images(self) -> None:
+        report = self.run_mode("uncertain_only", whole=0.5, base_mode="coarse")
+        self.assertTrue(report.available)
+        self.assertGreater(report.forward_passes, 0)
+
+    def test_every_mode_records_cost(self) -> None:
+        for mode in ("coarse", "full", "top_k"):
+            with self.subTest(mode=mode):
+                report = self.run_mode(mode)
+                self.assertEqual(report.mode, mode)
+                self.assertGreater(report.forward_passes, 0)
+                self.assertGreater(report.seconds, 0.0)
+                self.assertIn("forward_passes", report.as_dict())
+                self.assertIn("peak_memory_mb", report.as_dict())
+
+    def test_invalid_mode_rejected(self) -> None:
+        report = self.run_mode("telepathy")
+        self.assertFalse(report.available)
+        self.assertIn("Invalid patch configuration", report.message)
+
+    def test_message_avoids_claiming_proof(self) -> None:
+        """The heatmap must never be described as evidence of editing."""
+
+        message = self.run_mode("full").message.lower()
+        self.assertIn("not proof", message)
+        self.assertIn("suspicious", message)
+        self.assertNotIn("proves", message)
+
+
+class PatchScorerTest(unittest.TestCase):
+    """Caching and whole-image reuse must avoid duplicate forward passes."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.tmp = Path(cls._tmp.name)
+        cls.bundle = load_model(
+            write_mock_checkpoint(cls.tmp / "mock.pt"), base_config(), device="cpu"
+        )
+        cls.preprocessor = Preprocessor.from_config(base_config())
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def test_whole_image_box_is_reused_not_recomputed(self) -> None:
+        image = make_image(width=128, height=128)
+        scorer = PatchScorer(
+            self.bundle, self.preprocessor, image, batch_size=4, whole_image_probability=0.77
+        )
+        scores = scorer.score([(0, 0, 128, 128)])
+
+        self.assertAlmostEqual(scores[0], 0.77, places=6)
+        self.assertEqual(scorer.forward_passes, 0)
+        self.assertEqual(scorer.reused, 1)
+
+    def test_repeated_boxes_are_cached(self) -> None:
+        image = make_image(width=200, height=200)
+        scorer = PatchScorer(self.bundle, self.preprocessor, image, batch_size=4)
+        first = scorer.score([(0, 0, 64, 64), (64, 0, 64, 64)])
+        after_first = scorer.forward_passes
+        second = scorer.score([(0, 0, 64, 64), (64, 0, 64, 64)])
+
+        self.assertEqual(first, second)
+        self.assertEqual(scorer.forward_passes, after_first)  # no extra work
+
+    def test_scores_are_probabilities(self) -> None:
+        image = make_image(width=200, height=200)
+        scorer = PatchScorer(self.bundle, self.preprocessor, image, batch_size=2)
+        for score in scorer.score([(0, 0, 64, 64), (64, 64, 64, 64), (0, 64, 64, 64)]):
+            with self.subTest(score=score):
+                self.assertGreaterEqual(score, 0.0)
+                self.assertLessEqual(score, 1.0)
+
+
+class RefineBoxesTest(unittest.TestCase):
+    def test_subdivides_into_factor_squared_children(self) -> None:
+        children = refine_boxes([(0, 0, 256, 256)], 2, 64, 1024, 1024)
+        self.assertEqual(len(children), 4)
+        self.assertTrue(all(w == 128 and h == 128 for _, _, w, h in children))
+
+    def test_children_stay_inside_the_image(self) -> None:
+        for x, y, w, h in refine_boxes([(768, 768, 256, 256)], 2, 64, 1024, 1024):
+            with self.subTest(box=(x, y)):
+                self.assertLessEqual(x + w, 1024)
+                self.assertLessEqual(y + h, 1024)
+
+    def test_refusal_below_minimum_size(self) -> None:
+        self.assertEqual(refine_boxes([(0, 0, 96, 96)], 2, 64, 512, 512), [])
+
+    def test_factor_one_is_a_no_op(self) -> None:
+        self.assertEqual(refine_boxes([(0, 0, 256, 256)], 1, 64, 1024, 1024), [])
+
+
+class AblationCliTest(unittest.TestCase):
+    def test_parser_defaults_and_overrides(self) -> None:
+        import scripts.ablate_patches as cli
+
+        args = cli.build_parser().parse_args([])
+        self.assertEqual(args.threshold, 0.42)
+        self.assertIn("off", args.modes)
+
+        args = cli.build_parser().parse_args(["--modes", "off", "full", "--limit", "10"])
+        self.assertEqual(args.modes, ["off", "full"])
+        self.assertEqual(args.limit, 10)
+
+    def test_verdict_demotes_when_nothing_improves(self) -> None:
+        import scripts.ablate_patches as cli
+
+        summary = {
+            "off": {"metrics": {"f1": 0.8, "recall": 0.7, "false_positive_rate": 0.04}},
+            "full": {
+                "metrics": {"f1": 0.8, "recall": 0.7, "false_positive_rate": 0.04},
+                "delta_vs_whole_image_only": {"f1": 0.0, "recall": 0.0, "false_positive_rate": 0.0},
+            },
+        }
+        verdict = cli.build_verdict(summary)
+        self.assertEqual(verdict["conclusion"], "keep_as_explainability_only")
+
+    def test_verdict_keeps_scoring_when_a_mode_helps(self) -> None:
+        import scripts.ablate_patches as cli
+
+        summary = {
+            "off": {"metrics": {"f1": 0.80, "recall": 0.70, "false_positive_rate": 0.04}},
+            "full": {
+                "metrics": {"f1": 0.85, "recall": 0.78, "false_positive_rate": 0.03},
+                "delta_vs_whole_image_only": {
+                    "f1": 0.05,
+                    "recall": 0.08,
+                    "false_positive_rate": -0.01,
+                },
+            },
+        }
+        verdict = cli.build_verdict(summary)
+        self.assertEqual(verdict["conclusion"], "keep_as_scoring_component")
+        self.assertIn("full", verdict["modes_that_improved"])

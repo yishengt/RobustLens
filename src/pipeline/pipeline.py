@@ -200,11 +200,17 @@ class DetectionPipeline:
         self.preprocessor = Preprocessor.from_config(self.config)
         self.transform_specs = build_transform_specs(self.config)
         self.explain_images = explain_images
+        self.calibration_error: Optional[str] = None
         self.calibrator = self._load_calibrator(self.config)
         if self.calibrator and self.calibrator.selected_thresholds:
             calibration = self.config.get("calibration", {}) or {}
             if calibration.get("use_selected_threshold", True):
-                selected = self.calibrator.selected_thresholds.get("balanced")
+                # Which fitted operating point to run at. All four are stored by
+                # scripts/calibrate_threshold.py; "balanced" maximises Youden's J.
+                point = str(calibration.get("operating_point", "balanced"))
+                selected = self.calibrator.selected_thresholds.get(point)
+                if selected is None:
+                    selected = self.calibrator.selected_thresholds.get("balanced")
                 if selected is not None:
                     self.config.setdefault("inference", {})["threshold"] = float(selected)
                     margin = float(calibration.get("uncertainty_margin", 0.10))
@@ -217,20 +223,116 @@ class DetectionPipeline:
                         1.0, float(selected) + margin
                     )
 
-    @staticmethod
-    def _load_calibrator(config: Dict[str, Any]) -> Optional[ProbabilityCalibrator]:
-        """Load optional persisted calibration parameters for normal inference."""
+    def _load_calibrator(self, config: Dict[str, Any]) -> Optional[ProbabilityCalibrator]:
+        """Load optional persisted calibration parameters for normal inference.
 
+        A missing or unreadable calibration file must never stop inference. The
+        parameters live under outputs/ which is git-ignored, so a fresh clone
+        with calibration enabled would otherwise fail to run at all. Instead the
+        pipeline falls back to uncalibrated scores and records why, which
+        calibration_status() then reports plainly.
+        """
+
+        self.calibration_error: Optional[str] = None
         calibration = config.get("calibration", {}) or {}
         if not calibration.get("enabled", False):
             return None
         path = calibration.get("path")
         if not path:
+            self.calibration_error = (
+                "calibration.enabled is true but no calibration.path is set."
+            )
             return None
         source = Path(str(path)).expanduser()
         if not source.is_absolute() and config.get("_project_root"):
             source = Path(config["_project_root"]) / source
-        return ProbabilityCalibrator.load(source)
+        try:
+            return ProbabilityCalibrator.load(source)
+        except (FileNotFoundError, ValueError) as exc:
+            self.calibration_error = (
+                f"{exc} Falling back to UNCALIBRATED scores. Fit calibration with "
+                f"scripts/calibrate_threshold.py, or set calibration.enabled to false."
+            )
+            return None
+
+    def calibration_status(self) -> Dict[str, Any]:
+        """Describe exactly what the reported numbers are.
+
+        Four states must never be blurred together: a calibrated probability
+        versus a raw model score, and a threshold fitted on labelled data
+        versus the interface default. Presenting an uncalibrated score beside a
+        default threshold as though both were derived from data would overstate
+        what the system knows.
+        """
+
+        calibration = self.config.get("calibration", {}) or {}
+        default_threshold = 0.5
+        threshold = float(self.config.get("inference", {}).get("threshold", default_threshold))
+        labels = self.config.get("labels", {}) or {}
+
+        if self.calibrator is None:
+            return {
+                "calibrated": False,
+                "probability_kind": "uncalibrated model score",
+                "probability_note": (
+                    self.calibration_error
+                    or "No calibration parameters are loaded, so this is the model's raw "
+                    "score. It ranks images but is not a statistically calibrated "
+                    "probability and is not comparable across checkpoints."
+                ),
+                "calibration_error": self.calibration_error,
+                "method": None,
+                "temperature": None,
+                "threshold": threshold,
+                "threshold_source": "interface default",
+                "threshold_note": (
+                    "This threshold and the label bands are interface defaults, not "
+                    "values derived from labelled validation data."
+                ),
+                "operating_point": None,
+                "calibration_path": calibration.get("path"),
+                "label_bands": {
+                    "authentic_max": labels.get("authentic_max"),
+                    "ai_min": labels.get("ai_min"),
+                },
+                "label_bands_source": "interface default",
+            }
+
+        used_selection = bool(
+            calibration.get("use_selected_threshold", True) and self.calibrator.selected_thresholds
+        )
+        point = str(calibration.get("operating_point", "balanced"))
+        return {
+            "calibrated": True,
+            "probability_kind": "calibrated probability",
+            "probability_note": (
+                f"Probabilities were calibrated with {self.calibrator.method} scaling "
+                f"fitted on {self.calibrator.fitted_on.replace('_', ' ')} data."
+            ),
+            "method": self.calibrator.method,
+            "temperature": self.calibrator.temperature,
+            "threshold": threshold,
+            "threshold_source": (
+                f"data-derived ({point} operating point)" if used_selection else "interface default"
+            ),
+            "threshold_note": (
+                f"Selected on clean validation data at the {point} operating point and "
+                f"frozen for every condition."
+                if used_selection
+                else "A calibrator is loaded but its selected thresholds were not applied."
+            ),
+            "operating_point": point if used_selection else None,
+            "calibration_path": calibration.get("path"),
+            "label_bands": {
+                "authentic_max": labels.get("authentic_max"),
+                "ai_min": labels.get("ai_min"),
+            },
+            "label_bands_source": (
+                "data-derived (threshold +/- uncertainty margin)"
+                if used_selection
+                else "interface default"
+            ),
+        }
 
     @classmethod
     def from_checkpoint(

@@ -67,6 +67,48 @@ def is_calibrated(pipeline: DetectionPipeline) -> bool:
     return getattr(pipeline, "calibrator", None) is not None
 
 
+def render_calibration_status(pipeline: DetectionPipeline) -> None:
+    """State plainly what the number is and where the threshold came from.
+
+    Four states must stay distinguishable: calibrated probability vs raw model
+    score, and a data-derived threshold vs the interface default.
+    """
+
+    status = pipeline.calibration_status()
+    st.subheader("How to read these numbers")
+
+    left, right = st.columns(2)
+    if status["calibrated"]:
+        left.success(f"**Probability:** {status['probability_kind']}")
+        detail = status["probability_note"]
+        if status.get("temperature"):
+            detail += f" Fitted temperature T = {status['temperature']:.4f}."
+        left.caption(detail)
+    else:
+        left.warning(f"**Probability:** {status['probability_kind']}")
+        left.caption(status["probability_note"])
+
+    if status["threshold_source"].startswith("data-derived"):
+        right.success(f"**Threshold {status['threshold']:.2f}:** {status['threshold_source']}")
+    else:
+        right.warning(f"**Threshold {status['threshold']:.2f}:** {status['threshold_source']}")
+    right.caption(status["threshold_note"])
+
+    bands = status["label_bands"]
+    if bands.get("authentic_max") is not None:
+        st.caption(
+            f"Label bands: likely authentic below {bands['authentic_max']:.2f}, uncertain "
+            f"between, likely AI-generated at or above {bands['ai_min']:.2f} "
+            f"({status['label_bands_source']})."
+        )
+    if not status["calibrated"]:
+        st.caption(
+            "Fit calibration on labelled validation data to replace both with "
+            "data-derived values:  `./.venv/bin/python scripts/calibrate_threshold.py "
+            "--checkpoint models/pretrained/pytorch_model.pt --target-fpr 0.01`"
+        )
+
+
 def render_metadata(result: PipelineResult) -> None:
     metadata = result.metadata
     if metadata is None:
@@ -315,13 +357,7 @@ def main() -> None:
     render_explainability(result)
     render_errors(result)
 
-    if not is_calibrated(pipeline):
-        st.info(
-            "**Uncalibrated model score.** No calibration parameters are loaded, so the "
-            "probability is the model's raw score rather than a statistically calibrated "
-            "one. Fit calibration with `scripts/calibrate_threshold.py` on labelled "
-            "validation data to make these numbers comparable across checkpoints."
-        )
+    render_calibration_status(pipeline)
 
     detailed = result.as_detailed_dict()
     st.download_button(

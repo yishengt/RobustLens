@@ -1,0 +1,3 @@
+family,ai_images,authentic_images,accuracy,recall,fpr,mean_ai_probability
+full_synthetic,26,24,0.98,1.0,0.041667,0.997515
+tampered,22,24,0.695652,0.409091,0.041667,0.389248

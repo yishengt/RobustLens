@@ -10,11 +10,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
 from src.evaluation.metrics import BinaryMetrics, compute_metrics
+
+# Platt scaling fits a slope and an intercept on the logit; temperature scaling
+# fits the slope only (intercept pinned at 0), which is the standard
+# single-parameter calibrator for neural networks and cannot shift the
+# decision boundary on its own.
+CALIBRATION_METHODS = ("platt", "temperature")
 
 
 def _arrays(values: Sequence[float], labels: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
@@ -56,8 +62,10 @@ class ProbabilityCalibrator:
     selected_thresholds: Dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.method != "platt":
-            raise ValueError("Only method='platt' is supported")
+        if self.method not in CALIBRATION_METHODS:
+            raise ValueError(
+                f"method must be one of {', '.join(CALIBRATION_METHODS)}, got '{self.method}'"
+            )
         if self.input_type not in {"probabilities", "logits"}:
             raise ValueError("input_type must be 'probabilities' or 'logits'")
         if not np.isfinite(self.scale) or not np.isfinite(self.bias):
@@ -72,8 +80,16 @@ class ProbabilityCalibrator:
         )
         return np.clip(_sigmoid(self.scale * features + self.bias), 0.0, 1.0)
 
+    @property
+    def temperature(self) -> Optional[float]:
+        """The temperature ``T`` for temperature scaling, where scale = 1/T."""
+
+        if self.method != "temperature" or self.scale == 0:
+            return None
+        return float(1.0 / self.scale)
+
     def as_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "method": self.method,
             "input_type": self.input_type,
             "scale": round(float(self.scale), 12),
@@ -81,6 +97,9 @@ class ProbabilityCalibrator:
             "fitted_on": self.fitted_on,
             "selected_thresholds": self.selected_thresholds,
         }
+        if self.temperature is not None:
+            payload["temperature"] = round(float(self.temperature), 12)
+        return payload
 
     def save(self, path: str | Path) -> Path:
         output = Path(path).expanduser()
@@ -113,8 +132,21 @@ class ProbabilityCalibrator:
         labels: Sequence[int],
         input_type: str = "probabilities",
         max_iter: int = 100,
+        method: str = "platt",
     ) -> "ProbabilityCalibrator":
-        """Fit Platt scaling with damped Newton updates."""
+        """Fit a calibrator on clean labelled validation scores.
+
+        ``platt`` fits a slope and an intercept on the logit. ``temperature``
+        fits the slope only, holding the intercept at zero: it sharpens or
+        softens confidence without moving the decision boundary, which is the
+        usual choice when the ranking is already good but the probabilities are
+        over-confident.
+        """
+
+        if method not in CALIBRATION_METHODS:
+            raise ValueError(
+                f"method must be one of {', '.join(CALIBRATION_METHODS)}, got '{method}'"
+            )
 
         x, y = _arrays(values, labels)
         if input_type == "probabilities":
@@ -122,14 +154,42 @@ class ProbabilityCalibrator:
         elif input_type != "logits":
             raise ValueError("input_type must be 'probabilities' or 'logits'")
 
-        # Start at identity scaling and optimise logistic NLL with a tiny ridge
-        # term so perfectly separable validation data remains finite.
+        # Platt's target smoothing. With linearly separable validation scores
+        # the unsmoothed logistic optimum sits at infinity, so the fit collapses
+        # to a step function of only 0.0 and 1.0 -- which looks confident but
+        # makes every decision threshold equivalent. Smoothing the targets to
+        # (N+ + 1)/(N+ + 2) and 1/(N- + 2) keeps the optimum finite, as in
+        # Platt (1999).
+        positives = float(np.sum(y == 1.0))
+        negatives = float(np.sum(y == 0.0))
+        high = (positives + 1.0) / (positives + 2.0)
+        low = 1.0 / (negatives + 2.0)
+        y = np.where(y == 1.0, high, low)
+
+        if method == "temperature":
+            return cls._fit_temperature(x, y, input_type, max_iter)
+
+        # Start at identity scaling and optimise the logistic NLL with a small
+        # ridge term. The Newton step is damped by a backtracking line search:
+        # an undamped step diverges on near-separable validation data, driving
+        # the slope to ~1e8 and collapsing every calibrated score to exactly 0
+        # or 1. That looks like a confident calibrator but is a step function,
+        # and it makes every decision threshold equivalent.
         params = np.array([1.0, 0.0], dtype=np.float64)
         ridge = 1e-6
+
+        def negative_log_likelihood(values: np.ndarray) -> float:
+            logits = np.clip(values[0] * x + values[1], -60.0, 60.0)
+            loss = float(np.sum(np.logaddexp(0.0, logits) - y * logits))
+            return loss + 0.5 * ridge * float(np.dot(values, values))
+
+        current_loss = negative_log_likelihood(params)
         for _ in range(max(1, int(max_iter))):
             probabilities = _sigmoid(params[0] * x + params[1])
             residual = probabilities - y
             gradient = np.array([np.dot(residual, x), residual.sum()]) + ridge * params
+            if not np.all(np.isfinite(gradient)) or np.max(np.abs(gradient)) < 1e-9:
+                break
             curvature = probabilities * (1.0 - probabilities)
             hessian = np.array(
                 [
@@ -142,14 +202,56 @@ class ProbabilityCalibrator:
                 step = np.linalg.solve(hessian, gradient)
             except np.linalg.LinAlgError:
                 break
-            updated = params - step
-            if np.max(np.abs(updated - params)) < 1e-8:
-                params = updated
+            if not np.all(np.isfinite(step)):
                 break
-            params = updated
+
+            # Backtrack until the objective actually improves.
+            scale_factor = 1.0
+            improved = False
+            for _ in range(40):
+                candidate = params - scale_factor * step
+                if np.all(np.isfinite(candidate)):
+                    candidate_loss = negative_log_likelihood(candidate)
+                    if candidate_loss <= current_loss:
+                        improved = True
+                        break
+                scale_factor *= 0.5
+            if not improved:
+                break
+            shift = np.max(np.abs(candidate - params))
+            params, current_loss = candidate, candidate_loss
+            if shift < 1e-9:
+                break
         return cls(
             method="platt", input_type=input_type, scale=float(params[0]), bias=float(params[1])
         )
+
+    @classmethod
+    def _fit_temperature(
+        cls, x: np.ndarray, y: np.ndarray, input_type: str, max_iter: int
+    ) -> "ProbabilityCalibrator":
+        """Fit the single slope w = 1/T by Newton descent on the logistic NLL."""
+
+        weight = 1.0
+        ridge = 1e-6
+        for _ in range(max(1, int(max_iter))):
+            probabilities = _sigmoid(weight * x)
+            gradient = float(np.dot(probabilities - y, x)) + ridge * weight
+            curvature = probabilities * (1.0 - probabilities)
+            hessian = float(np.dot(curvature, x * x)) + ridge
+            if hessian <= 0:
+                break
+            step = gradient / hessian
+            updated = weight - step
+            # A non-positive temperature would invert the ranking, so keep the
+            # slope strictly positive.
+            if updated <= 1e-6:
+                updated = 1e-6
+            if abs(updated - weight) < 1e-9:
+                weight = updated
+                break
+            weight = updated
+        return cls(method="temperature", input_type=input_type, scale=float(weight), bias=0.0)
 
 
 @dataclass(frozen=True)
@@ -157,6 +259,7 @@ class ThresholdSelection:
     """Three frozen operating points selected from clean validation data."""
 
     balanced: float
+    f1_optimal: float
     low_false_positive: float
     high_recall: float
     target_false_positive_rate: float
@@ -167,6 +270,7 @@ class ThresholdSelection:
     def as_dict(self) -> Dict[str, Any]:
         return {
             "balanced_threshold": self.balanced,
+            "f1_optimal_threshold": self.f1_optimal,
             "low_false_positive_threshold": self.low_false_positive,
             "high_recall_threshold": self.high_recall,
             "target_false_positive_rate": self.target_false_positive_rate,
@@ -196,6 +300,9 @@ def search_thresholds(
     balanced = max(
         thresholds, key=lambda t: (metric_objects[float(t)].youden_j, -abs(float(t) - 0.5))
     )
+    # Maximise F1; ties prefer the lower threshold, which favours recall.
+    f1_optimal = max(thresholds, key=lambda t: (metric_objects[float(t)].f1, -float(t)))
+
     eligible = [
         t
         for t in thresholds
@@ -219,11 +326,13 @@ def search_thresholds(
     )
     selected = {
         "balanced": metric_objects[float(balanced)].as_dict(),
+        "f1_optimal": metric_objects[float(f1_optimal)].as_dict(),
         "low_false_positive": metric_objects[float(low_fp)].as_dict(),
         "high_recall": metric_objects[float(high_recall)].as_dict(),
     }
     return ThresholdSelection(
         balanced=float(balanced),
+        f1_optimal=float(f1_optimal),
         low_false_positive=float(low_fp),
         high_recall=float(high_recall),
         target_false_positive_rate=float(target_false_positive_rate),

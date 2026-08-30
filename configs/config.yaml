@@ -75,11 +75,28 @@ labels:
 # Set enabled=true after fitting this file with scripts/calibrate_threshold.py.
 # Calibration and threshold fitting use clean labelled validation data only.
 calibration:
-  enabled: false
+  # Set enabled: true after running scripts/calibrate_threshold.py. Until then
+  # the reported number is an UNCALIBRATED model score and the label bands
+  # below are interface defaults, not thresholds derived from data.
+  # Enabled: outputs/calibration.json is fitted by scripts/evaluate_confidence.py
+  # (or scripts/calibrate_threshold.py) on CLEAN VALIDATION data only. That file
+  # is git-ignored, so a fresh clone will not have it -- the pipeline then falls
+  # back to uncalibrated scores with a clear notice rather than failing.
+  enabled: true
   path: outputs/calibration.json
-  method: platt
+  method: platt                  # platt (slope + intercept) | temperature (slope only)
   target_false_positive_rate: 0.01
   uncertainty_margin: 0.10
+  use_selected_threshold: true
+  # balanced (Youden J) | f1_optimal | low_false_positive | high_recall
+  #
+  # `balanced` chosen on measured evidence over a 72-image held-out test split:
+  #   balanced   t=0.69  acc 0.819  FPR 0.042  F1 0.847  worst-case 0.778
+  #   low-FPR    t=0.78  acc 0.778  FPR 0.042  F1 0.805  worst-case 0.736
+  #   f1_optimal t=0.53  acc 0.750  FPR 0.417  F1 0.816  worst-case 0.681
+  # f1_optimal maximised F1 on the 48-image validation split but transferred
+  # badly, which is what a small validation set does to threshold selection.
+  operating_point: balanced
 
 # --- Stage 7: transformation consistency ----------------------------------
 # consistency = 1 - (std_weight * std/std_reference + range_weight * range/range_reference)
@@ -96,18 +113,38 @@ consistency:
 # falls back to whole-image + transformation fusion when that happens.
 patches:
   enabled: true
+  # off            no patch scoring
+  # coarse         one small grid (cheapest useful mode)
+  # full           one dense grid, capped by max_patches
+  # top_k          coarse grid, then refine only the top-k regions
+  # uncertain_only run base_mode ONLY when the whole-image score is undecided;
+  #                confident images stop early and spend zero patch passes
+  mode: uncertain_only
+  base_mode: full              # what uncertain_only runs when it does run
+  uncertain_band: [0.2, 0.8]   # the "undecided" range of the whole-image score
   patch_size: 256              # window size in original-image pixels
   stride: 192                  # < patch_size gives overlapping patches
   min_patch_size: 64           # below this the image is too small to tile
   max_patches: 12              # hard cap; larger grids are evenly subsampled
+  coarse_max_patches: 4        # cap for coarse mode
+  refine_factor: 2             # top_k mode: split each chosen patch into 2x2
   top_k: 3                     # how many highest-risk patches to report
   heatmap_threshold: 0.5       # used only for highlighting in the demo
   evidence_statistic: top_k_mean   # top_k_mean | max | mean
+  batch_size: null             # null falls back to inference.batch_size
+  device: null                 # null falls back to the model's device
 
 # --- Stage 8: prediction fusion -------------------------------------------
 fusion:
   # whole_patch_transform | rgb_transform | frequency
-  mode: whole_patch_transform
+  #
+  # DEMOTED FROM whole_patch_transform ON EVIDENCE. Two independent runs
+  # (outputs/protocol, outputs/patch_ablation) showed patch evidence does not
+  # earn a scoring weight: every patch mode scored WORSE than whole-image-only
+  # (F1 -0.019, recall -0.025) with no reduction in false positives. Patch
+  # analysis remains enabled for the heatmap as an explainability feature.
+  # Re-run scripts/ablate_patches.py after any checkpoint change to re-test.
+  mode: rgb_transform
   original_weight: 0.7         # used by the rgb_transform mode
   transform_weight: 0.3
   # whole_patch_transform: 60 % whole image, 20 % transformed mean, 20 % patch
@@ -132,12 +169,16 @@ frequency:
 
 # --- Stage 10: confidence scoring -----------------------------------------
 confidence:
-  decisiveness_weight: 0.35    # how far the final probability sits from 0.5
-  agreement_weight: 0.25       # share of versions agreeing with the original
-  consistency_weight: 0.25     # transformation consistency score
-  patch_agreement_weight: 0.15 # share of patches agreeing with the whole image
-                               # (dropped and the rest renormalised when patch
-                               #  analysis is unavailable)
+  decisiveness_weight: 0.4     # how far the final probability sits from 0.5
+  agreement_weight: 0.3        # share of versions agreeing with the original
+  consistency_weight: 0.3      # transformation consistency score
+  # REMOVED ON EVIDENCE (weight 0 disables the term entirely).
+  # scripts/evaluate_confidence.py measured that including patch agreement made
+  # confidence WORSE at separating correct from incorrect predictions:
+  # AUROC(confidence vs correctness) 0.767 -> 0.737, and the correct/incorrect
+  # confidence gap shrank 0.145 -> 0.114. Gating it to "reliable" patches only
+  # did not rescue it (0.743 / 0.118). Re-run that script to re-test.
+  patch_agreement_weight: 0.0
   high_min: 0.70
   medium_min: 0.45
 
