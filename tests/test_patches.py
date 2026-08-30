@@ -16,10 +16,13 @@ import numpy as np
 
 from src.pipeline.model_loader import load_model
 from src.pipeline.patches import (
+    MODE_COARSE,
     PatchReport,
     PatchScorer,
+    _boxes_for_mode,
     analyse_patches,
     build_heatmap,
+    generate_grid_boxes,
     generate_patch_boxes,
     overlay_patch_heatmap,
     patch_settings,
@@ -502,3 +505,64 @@ class AblationCliTest(unittest.TestCase):
         verdict = cli.build_verdict(summary)
         self.assertEqual(verdict["conclusion"], "keep_as_scoring_component")
         self.assertIn("full", verdict["modes_that_improved"])
+
+
+class GridBoxesTest(unittest.TestCase):
+    """Fixed NxN tiling, so the region count does not follow the aspect ratio."""
+
+    def test_grid_yields_exactly_n_squared_tiles_on_any_aspect(self) -> None:
+        for width, height in [(1024, 768), (1024, 1024), (1920, 1080), (768, 1024)]:
+            with self.subTest(size=(width, height)):
+                self.assertEqual(len(generate_grid_boxes(width, height, 4)), 16)
+
+    def test_tiles_cover_the_whole_image_with_no_gaps_or_overlap(self) -> None:
+        """Remainder pixels must go somewhere, or an edge strip goes unscored."""
+
+        width, height = 1024, 681  # 681 is not divisible by 4
+        boxes = generate_grid_boxes(width, height, 4)
+        covered = np.zeros((height, width), dtype=np.int32)
+        for x, y, box_width, box_height in boxes:
+            covered[y : y + box_height, x : x + box_width] += 1
+        self.assertEqual(int(covered.min()), 1, "a pixel was left unscored")
+        self.assertEqual(int(covered.max()), 1, "a pixel was scored twice")
+
+    def test_boxes_stay_inside_the_image(self) -> None:
+        width, height = 1000, 700
+        for x, y, box_width, box_height in generate_grid_boxes(width, height, 3):
+            self.assertGreaterEqual(x, 0)
+            self.assertGreaterEqual(y, 0)
+            self.assertLessEqual(x + box_width, width)
+            self.assertLessEqual(y + box_height, height)
+
+    def test_image_too_small_for_the_grid_yields_nothing(self) -> None:
+        """Better no regions than sixteen meaningless 12px slivers."""
+
+        self.assertEqual(generate_grid_boxes(100, 100, 4, min_patch_size=64), [])
+
+    def test_grid_below_one_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            generate_grid_boxes(512, 512, 0)
+
+
+class GridSettingsTest(unittest.TestCase):
+    def test_grid_is_optional_and_defaults_to_the_sliding_window(self) -> None:
+        self.assertIsNone(patch_settings({"patches": {}})["grid"])
+
+    def test_grid_exceeding_the_cap_is_rejected_with_a_usable_message(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            patch_settings({"patches": {"grid": 5, "max_patches": 16}})
+        message = str(caught.exception)
+        self.assertIn("25", message)
+        self.assertIn("max_patches", message)
+
+    def test_grid_within_the_cap_is_accepted(self) -> None:
+        self.assertEqual(patch_settings({"patches": {"grid": 4, "max_patches": 24}})["grid"], 4)
+
+    def test_grid_overrides_the_sliding_window_and_ignores_the_mode_cap(self) -> None:
+        """The caller asked for a fixed grid; stride and coarse cap must not shrink it."""
+
+        settings = patch_settings(
+            {"patches": {"grid": 4, "max_patches": 24, "coarse_max_patches": 4}}
+        )
+        boxes = _boxes_for_mode(MODE_COARSE, settings, 1024, 768)
+        self.assertEqual(len(boxes), 16)

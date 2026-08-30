@@ -212,7 +212,8 @@ def evaluate_abstention(
         RULE_BORDERLINE,
         distance < margin,
         f"the score {probability:.3f} sits {distance:.3f} from the {threshold:.2f} "
-        f"threshold, inside the {margin:.2f} borderline margin",
+        f"threshold, {'inside' if distance < margin else 'outside'} the {margin:.2f} "
+        f"borderline margin",
         observed=distance,
         limit=margin,
     )
@@ -239,7 +240,8 @@ def evaluate_abstention(
         consider(
             RULE_LOW_CONSISTENCY,
             float(consistency_score) < settings["min_consistency"],
-            f"transformation consistency {float(consistency_score):.3f} is below "
+            f"transformation consistency {float(consistency_score):.3f} is "
+            f"{'below' if float(consistency_score) < settings['min_consistency'] else 'at or above'} "
             f"the {settings['min_consistency']:.2f} minimum",
             observed=float(consistency_score),
             limit=settings["min_consistency"],
@@ -255,8 +257,10 @@ def evaluate_abstention(
         consider(
             RULE_BOUNDARY_CROSSING,
             crosses and minority >= limit,
-            f"{above} of {len(every)} versions scored AI-generated and the rest did "
-            f"not, so the transformations straddle the decision threshold",
+            f"{above} of {len(every)} versions scored AI-generated and "
+            f"{len(every) - above} did not"
+            + (", straddling the decision threshold" if crosses and minority >= limit
+               else "; not a material split"),
             observed=minority,
             limit=limit,
         )
@@ -266,7 +270,8 @@ def evaluate_abstention(
         consider(
             RULE_LOW_AGREEMENT,
             float(agreement) < settings["min_agreement"],
-            f"only {float(agreement):.2f} of versions agreed with the original, below "
+            f"{float(agreement):.2f} of versions agreed with the original, "
+            f"{'below' if float(agreement) < settings['min_agreement'] else 'at or above'} "
             f"the {settings['min_agreement']:.2f} minimum",
             observed=float(agreement),
             limit=settings["min_agreement"],
@@ -278,7 +283,8 @@ def evaluate_abstention(
         consider(
             RULE_LOW_PATCH_COVERAGE,
             float(patch_coverage) < settings["min_patch_coverage"],
-            f"patches covered only {float(patch_coverage):.2f} of the image, below "
+            f"patches covered {float(patch_coverage):.2f} of the image, "
+            f"{'below' if float(patch_coverage) < settings['min_patch_coverage'] else 'at or above'} "
             f"the {settings['min_patch_coverage']:.2f} minimum",
             observed=float(patch_coverage),
             limit=settings["min_patch_coverage"],

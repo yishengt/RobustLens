@@ -168,14 +168,33 @@ patches:
   # top_k          coarse grid, then refine only the top-k regions
   # uncertain_only run base_mode ONLY when the whole-image score is undecided;
   #                confident images stop early and spend zero patch passes
-  mode: coarse
+  mode: full
   base_mode: full              # what uncertain_only runs when it does run
   uncertain_band: [0.2, 0.8]   # the "undecided" range of the whole-image score
   patch_size: 256              # window size in original-image pixels
   stride: 192                  # < patch_size gives overlapping patches
   min_patch_size: 64           # below this the image is too small to tile
-  max_patches: 12              # hard cap; larger grids are evenly subsampled
-  coarse_max_patches: 4        # cap for coarse mode
+  # Hard caps on forward passes. Raising a cap above what the grid actually
+  # produces costs nothing -- the grid saturates -- so these are set to reach
+  # full coverage on a typical 1024px image rather than to a round number.
+  # Measured on 1024x768 at ~0.46 s/patch:
+  #   coarse  4 ->  33.3% coverage,  4 passes, 2.8 s   (two-thirds unmeasured)
+  #   coarse 12 -> 100.0% coverage, 12 passes, 5.6 s   <- chosen
+  #   full   12 ->  75.5% coverage, 12 passes, 5.5 s
+  #   full   24 -> 100.0% coverage, 20 passes, 9.3 s   <- chosen
+  # Coverage is image-size dependent: a much larger image still subsamples.
+  # This is explainability only -- patch evidence has ZERO weight in the
+  # probability and in confidence, so these caps cannot change any score.
+  # Fixed NxN tiling. Set this and the image is split into exactly grid x grid
+  # regions whatever its shape, so 4 means 16 regions on a portrait, landscape
+  # or square photo alike. Leave null to use the sliding window instead, where
+  # the region count follows the aspect ratio (a 4:3 photo tiles 4x3 = 12).
+  # Tiles are not square on a non-square image; that costs nothing, because
+  # preprocessing resizes every crop to the model's square input regardless.
+  # grid * grid must fit within max_patches.
+  grid: 4
+  max_patches: 24              # hard cap; larger grids are evenly subsampled
+  coarse_max_patches: 12       # cap for coarse mode
   refine_factor: 2             # top_k mode: split each chosen patch into 2x2
   top_k: 3                     # how many highest-risk patches to report
   heatmap_threshold: 0.5       # used only for highlighting in the demo
