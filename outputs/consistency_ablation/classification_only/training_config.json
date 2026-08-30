@@ -1,0 +1,80 @@
+{
+  "data": {
+    "extensions": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp"
+    ],
+    "include_conflicting_labels": false,
+    "masks_dir": "masks",
+    "max_groups_per_split": {
+      "test": 8,
+      "train": 24,
+      "validation": 8
+    },
+    "num_workers": 0,
+    "quarantine_path": "outputs/data_quality/quarantine.json",
+    "strict_images": false,
+    "synthetic_mixture_dir": "data/synthetic_mixture",
+    "synthetic_mixture_fraction": 0.25,
+    "test_dir": "data/local_edits/test",
+    "train_dir": "data/local_edits/train",
+    "validation_dir": "data/local_edits/validation"
+  },
+  "evaluation": {
+    "old_threshold": 0.69,
+    "recalibrate_after_training": true
+  },
+  "lora": {
+    "alpha": 16,
+    "bias": "none",
+    "dropout": 0.05,
+    "rank": 8,
+    "train_classifier": true
+  },
+  "model": {
+    "bombek": {
+      "classifier_dropout": 0.3,
+      "dinov2_model": "vit_large_patch14_dinov2.lvd142m",
+      "hidden_dim": 512,
+      "image_size": 392,
+      "lora_alpha": 64,
+      "lora_dropout": 0.1,
+      "lora_rank": 32,
+      "siglip_model": "google/siglip2-so400m-patch14-384"
+    },
+    "checkpoint": "models/pretrained/pytorch_model.pt",
+    "output_adapter": "models/adapters/consistency_classification_only",
+    "parameter_limit": 2000000000
+  },
+  "outputs": {
+    "directory": "outputs/consistency_ablation/classification_only",
+    "feature_cache_dir": "outputs/consistency_ablation/classification_only/feature_cache"
+  },
+  "training": {
+    "batch_size": 2,
+    "classifier_learning_rate": 0.001,
+    "consistency": {
+      "enabled": false,
+      "method": "mse",
+      "weight": 0.0
+    },
+    "early_stopping_patience": 2,
+    "epochs": 3,
+    "gradient_accumulation_steps": 4,
+    "lora_learning_rate": 0.0001,
+    "mode": "head_only",
+    "official_transformations": [
+      "jpeg_70",
+      "blur_0.5",
+      "resize_0.5x",
+      "color_jitter"
+    ],
+    "seed": 42,
+    "selection_metric": "f1",
+    "selection_threshold": 0.5,
+    "views_per_image": 2,
+    "weight_decay": 0.0
+  }
+}

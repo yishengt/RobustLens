@@ -1,0 +1,809 @@
+{
+  "architecture": "bombek_siglip2_dinov2",
+  "base_model_names": {
+    "dinov2": "vit_large_patch14_dinov2.lvd142m",
+    "siglip": "google/siglip2-so400m-patch14-384"
+  },
+  "can_finetune_directly": false,
+  "checkpoint": "models/pretrained/pytorch_model.pt",
+  "checkpoint_format": "monolithic_state_dict",
+  "classifier_head_structure": [
+    {
+      "name": "classifier",
+      "parameters": 0,
+      "type": "ClassificationHead"
+    },
+    {
+      "name": "head",
+      "parameters": 0,
+      "type": "Sequential"
+    },
+    {
+      "name": "head.0",
+      "parameters": 4352,
+      "type": "LayerNorm"
+    },
+    {
+      "name": "head.1",
+      "parameters": 1114624,
+      "type": "Linear"
+    },
+    {
+      "name": "head.2",
+      "parameters": 0,
+      "type": "GELU"
+    },
+    {
+      "name": "head.3",
+      "parameters": 0,
+      "type": "Dropout"
+    },
+    {
+      "name": "head.4",
+      "parameters": 131328,
+      "type": "Linear"
+    },
+    {
+      "name": "head.5",
+      "parameters": 0,
+      "type": "GELU"
+    },
+    {
+      "name": "head.6",
+      "parameters": 0,
+      "type": "Dropout"
+    },
+    {
+      "name": "head.7",
+      "parameters": 257,
+      "type": "Linear"
+    }
+  ],
+  "frozen_parameter_count": 503796800,
+  "limitation": "The checkpoint is monolithic rather than a standalone PEFT adapter; restore it with the recovered architecture, then export a separate adapter.",
+  "lora_alpha": 64,
+  "lora_dropout": 0.1,
+  "lora_rank": 32,
+  "lora_tensor_count": 156,
+  "lora_tensor_shapes": {
+    "dinov2.blocks.0.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.0.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.1.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.1.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.10.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.10.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.11.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.11.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.12.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.12.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.13.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.13.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.14.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.14.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.15.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.15.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.16.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.16.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.17.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.17.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.18.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.18.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.19.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.19.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.2.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.2.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.20.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.20.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.21.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.21.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.22.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.22.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.23.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.23.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.3.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.3.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.4.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.4.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.5.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.5.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.6.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.6.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.7.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.7.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.8.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.8.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "dinov2.blocks.9.attn.qkv.lora_A.weight": [
+      32,
+      1024
+    ],
+    "dinov2.blocks.9.attn.qkv.lora_B.weight": [
+      3072,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.0.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.0.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.0.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.0.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.1.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.1.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.1.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.1.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.10.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.10.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.10.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.10.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.11.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.11.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.11.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.11.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.12.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.12.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.12.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.12.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.13.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.13.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.13.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.13.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.14.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.14.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.14.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.14.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.15.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.15.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.15.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.15.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.16.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.16.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.16.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.16.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.17.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.17.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.17.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.17.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.18.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.18.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.18.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.18.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.19.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.19.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.19.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.19.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.2.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.2.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.2.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.2.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.20.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.20.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.20.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.20.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.21.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.21.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.21.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.21.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.22.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.22.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.22.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.22.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.23.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.23.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.23.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.23.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.24.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.24.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.24.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.24.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.25.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.25.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.25.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.25.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.26.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.26.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.26.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.26.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.3.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.3.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.3.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.3.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.4.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.4.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.4.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.4.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.5.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.5.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.5.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.5.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.6.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.6.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.6.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.6.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.7.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.7.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.7.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.7.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.8.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.8.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.8.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.8.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.9.self_attn.q_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.9.self_attn.q_proj.lora_B.default.weight": [
+      1152,
+      32
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.9.self_attn.v_proj.lora_A.default.weight": [
+      32,
+      1152
+    ],
+    "siglip.base_model.model.vision_model.encoder.layers.9.self_attn.v_proj.lora_B.default.weight": [
+      1152,
+      32
+    ]
+  },
+  "lora_tensors_exist": true,
+  "lora_type": "standard LoRA",
+  "model_module_inspection_error": null,
+  "peft_used": true,
+  "state_dict_tensor_count": 954,
+  "target_modules": [
+    "dinov2.blocks.0.attn.qkv",
+    "dinov2.blocks.1.attn.qkv",
+    "dinov2.blocks.10.attn.qkv",
+    "dinov2.blocks.11.attn.qkv",
+    "dinov2.blocks.12.attn.qkv",
+    "dinov2.blocks.13.attn.qkv",
+    "dinov2.blocks.14.attn.qkv",
+    "dinov2.blocks.15.attn.qkv",
+    "dinov2.blocks.16.attn.qkv",
+    "dinov2.blocks.17.attn.qkv",
+    "dinov2.blocks.18.attn.qkv",
+    "dinov2.blocks.19.attn.qkv",
+    "dinov2.blocks.2.attn.qkv",
+    "dinov2.blocks.20.attn.qkv",
+    "dinov2.blocks.21.attn.qkv",
+    "dinov2.blocks.22.attn.qkv",
+    "dinov2.blocks.23.attn.qkv",
+    "dinov2.blocks.3.attn.qkv",
+    "dinov2.blocks.4.attn.qkv",
+    "dinov2.blocks.5.attn.qkv",
+    "dinov2.blocks.6.attn.qkv",
+    "dinov2.blocks.7.attn.qkv",
+    "dinov2.blocks.8.attn.qkv",
+    "dinov2.blocks.9.attn.qkv"
+  ],
+  "target_modules_from_state_dict": [
+    "dinov2.blocks.0.attn.qkv",
+    "dinov2.blocks.1.attn.qkv",
+    "dinov2.blocks.10.attn.qkv",
+    "dinov2.blocks.11.attn.qkv",
+    "dinov2.blocks.12.attn.qkv",
+    "dinov2.blocks.13.attn.qkv",
+    "dinov2.blocks.14.attn.qkv",
+    "dinov2.blocks.15.attn.qkv",
+    "dinov2.blocks.16.attn.qkv",
+    "dinov2.blocks.17.attn.qkv",
+    "dinov2.blocks.18.attn.qkv",
+    "dinov2.blocks.19.attn.qkv",
+    "dinov2.blocks.2.attn.qkv",
+    "dinov2.blocks.20.attn.qkv",
+    "dinov2.blocks.21.attn.qkv",
+    "dinov2.blocks.22.attn.qkv",
+    "dinov2.blocks.23.attn.qkv",
+    "dinov2.blocks.3.attn.qkv",
+    "dinov2.blocks.4.attn.qkv",
+    "dinov2.blocks.5.attn.qkv",
+    "dinov2.blocks.6.attn.qkv",
+    "dinov2.blocks.7.attn.qkv",
+    "dinov2.blocks.8.attn.qkv",
+    "dinov2.blocks.9.attn.qkv",
+    "siglip.base_model.model.vision_model.encoder.layers.0.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.0.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.1.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.1.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.10.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.10.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.11.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.11.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.12.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.12.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.13.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.13.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.14.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.14.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.15.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.15.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.16.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.16.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.17.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.17.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.18.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.18.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.19.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.19.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.2.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.2.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.20.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.20.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.21.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.21.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.22.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.22.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.23.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.23.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.24.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.24.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.25.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.25.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.26.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.26.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.3.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.3.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.4.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.4.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.5.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.5.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.6.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.6.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.7.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.7.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.8.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.8.self_attn.v_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.9.self_attn.q_proj",
+    "siglip.base_model.model.vision_model.encoder.layers.9.self_attn.v_proj"
+  ],
+  "target_modules_verified_with_named_modules": false,
+  "total_parameter_count": 740371777,
+  "trainable_parameter_count": 236574977,
+  "under_2b_parameter_limit": true
+}

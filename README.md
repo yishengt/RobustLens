@@ -1,11 +1,129 @@
 # Robust Detection of AI-Generated Images Under Real-World Transformations
 
-An **inference-only** pipeline that estimates whether an image is AI-generated,
+The default workflow is an **inference-only** pipeline that estimates whether an image is AI-generated,
 and — more importantly — whether that estimate *survives* the things that
 happen to images in the real world: JPEG recompression, blurring, downscaling,
 noise, colour edits and cropping.
 
-The project loads an existing trained checkpoint. It does not train models.
+The validated path loads an existing trained checkpoint. Local-edit fine-tuning
+was implemented and **run at smoke scale**, then **rejected on measurement** —
+see below.
+
+### Submission documents
+
+| Document | Contents |
+|---|---|
+| **[`DEVPOST_SUBMISSION.md`](DEVPOST_SUBMISSION.md)** | Project description, solution, results, error analysis, limitations |
+| **[`FINAL_RESULTS.md`](FINAL_RESULTS.md)** | Every verified number with dataset, n, checkpoint, threshold and split |
+| **[`DEMO_SCRIPT.md`](DEMO_SCRIPT.md)** | 3-minute demo walkthrough |
+| **[`AUDIT.md`](AUDIT.md)** | Independent implementation audit and its follow-up work |
+
+---
+
+## Current validated scope
+
+The shipped workflow is the existing-checkpoint inference and evaluation path.
+
+**Adopted configuration:**
+
+| Setting | Value |
+|---|---|
+| Checkpoint | Bombek1 SigLIP2 + DINOv2 LoRA (**original**, unmodified) |
+| Fusion | `rgb_transform` — `0.7 · whole + 0.3 · mean(transformed)` |
+| Threshold | **0.69**, frozen across all conditions |
+| Patch evidence in scoring | **None** (zero probability and confidence weight) |
+| Abstention | **Enabled**, rules fitted on transformation chains |
+| Training | Classification-only; consistency loss disabled |
+
+**Fine-tuning was run and rejected.** A head-only local-edit fine-tune completed
+end to end, saved and reloaded bit-exactly, and left the original checkpoint
+byte-identical — but held-out AUROC fell from **0.510 to 0.354**, so the adapter
+was **not adopted**. That run used only 68 training and 20 test images: it
+demonstrates the machinery, and supports **no** conclusion about fine-tuning as
+a method. Because no fine-tuned model was adopted, **recalibration was not
+performed** and threshold 0.69 stands unchanged.
+
+The non-training closeout is reproducible and currently reports:
+
+- **470 tests passed, 337 subtests passed, 1 platform-dependent JPEG test
+  skipped**; Ruff, compilation, and import checks pass.
+- The simple prediction JSON remains exactly `{image_path, pred}`. Timestamps
+  and diagnostic fields appear only in the separate detailed output.
+- The data-quality audit inspected 25,337 local-edit files and found six
+  byte-identical conflicting-label pairs: five in train and one in test. Both
+  sides are quarantined (12 files); the audit found zero exact cross-split
+  duplicates and one near-duplicate pair.
+- A repository file-container probe now normalizes both classes to one format
+  and measures score/decision drift at a frozen threshold. The current 16+16
+  SID_Set control retained AUC 1.000 after both classes were uniformly
+  re-encoded as JPEG; 31/32 decisions were preserved, with mean absolute score
+  drift 0.0192. This weakens that specific extension/container shortcut
+  hypothesis, but does not rule out compression-history or other shortcuts.
+- The deterministic cached chain evaluation was re-analysed on 12 images at
+  the fixed calibrated threshold 0.69. Generation depth 5 produced the largest
+  mean downward score drift (−0.0956); depth 10 drifted −0.0870. Recall fell
+  from 0.625 clean to 0.500 for both depths.
+- The abstention sweep kept its pre-registered 1.5× minimum error-enrichment
+  and 35% maximum abstention-rate bars. No candidate passed, so the selected
+  setting abstains on 0/48 validation and 0/72 held-out images. This negative
+  result is retained; thresholds were not weakened to manufacture a pass.
+- Spectral features are diagnostic-only. A focused pipeline test proves that
+  enabling their extraction has zero effect on the predicted probability.
+- True unseen-generator generalisation is **not established**: SID_Set has no
+  per-generator labels. Enabling that evaluation without a generator label
+  field and explicit holdouts now raises a configuration error.
+
+### Reproduce the validated checks
+
+```bash
+# Data quarantine and shortcut probes
+./.venv/bin/python scripts/audit_dataset_quality.py
+./.venv/bin/python scripts/evaluate_format_shortcuts.py \
+  --authentic-dir data/extracted/sid_set/real \
+  --synthetic-dir data/extracted/sid_set/ai_generated \
+  --per-class-limit 16 --output-format JPEG --device cpu
+
+# Re-analyse the existing deterministic chain scores without model forwards
+./.venv/bin/python scripts/evaluate_chains.py --reuse-scores
+
+# Repository validation
+./.venv/bin/python -m pytest -q
+./.venv/bin/ruff check src scripts app.py tests
+./.venv/bin/python -m compileall -q src scripts app.py tests
+
+# Live demo
+./.venv/bin/streamlit run app.py
+```
+
+### Tasks 1–11
+
+| Task | Status in this tree |
+|---|---|
+| 1 — pipeline validation/integration | **Verified**: demo startup, output contract, patch wording, current-model integration |
+| 2 — local-edit fine-tuning | **Smoke-tested, not adopted**. Head-only run completed end to end (68 train / 17 val / 20 test images, 24 source groups + 17 replay). Adapter save/reload is bit-exact; original checkpoint SHA-256 unchanged. Comparison verdict: **do not adopt** (AUROC 0.510 → 0.354). |
+| 3 — transformation-invariant objective/ablation | **Ablation run at smoke scale**. none / logit-MSE / symmetric-KL all reached F1 0.7500, recall 1.0000, FPR 1.0000; AUROC 0.4479 / 0.4375 / 0.4479. Verdict: **keep classification-only**. |
+| 4 — abstention | **Fitted and enabled on chain evidence**. Single-transformation fitting selected nothing; chain fitting accepted 3 rules. Held-out chains: abstains on 12.5%, accuracy among answered 0.750 → 0.810, abstained images 2.67× more error-prone. Bars were **not** lowered. |
+| 5 — spectral cleanup | **Diagnostic-only**; zero effect on probability is tested |
+| 6 — transformation and chain robustness | **Verified** at one frozen threshold; chain fitting sample n=48, reporting sample n=12 |
+| 7 — generator generalisation | **Not established**; SID_Set lacks per-generator labels and invalid configuration fails clearly |
+| 8 — repository tests | **Verified**: leakage, duplicates, quarantine, format/resolution/aspect-ratio/compression confounds, filename leakage, chains, contract |
+| 9 — demo/UI explainability | **Verified**: patch heat is explicitly not segmentation or proof, and carries zero scoring weight |
+| 10 — post-fine-tuning recalibration | **Blocked**: no fine-tuned model was adopted, so there is nothing to recalibrate. The existing threshold 0.69 stays frozen. |
+| 11 — audit/reproducibility | **Verified** in this README and `AUDIT.md` |
+
+### Evidence grades used above
+
+| Grade | Meaning |
+|---|---|
+| **Verified** | Executed in this tree; the command and its output are reproducible |
+| **Smoke-tested** | Ran end to end on a deliberately tiny sample; proves the machinery, **not** the science |
+| **Historical** | Measured against an earlier threshold or checkpoint; labelled inline |
+| **Blocked** | Cannot run until a prerequisite lands |
+
+> **Threshold provenance.** Current results use the frozen calibrated threshold
+> **0.69**. Some earlier protocol numbers were produced at **0.42** before
+> calibration was fitted; those are labelled *historical* wherever they appear
+> and must not be compared directly with 0.69 results.
 
 ---
 
@@ -98,57 +216,65 @@ preprocessing as the full image, and the per-patch scores are reconstructed
 into a heatmap. A locally edited region can then raise the fused score even
 when the frame as a whole looks authentic.
 
-A hot patch means the detector responded strongly to that region. It is a
-**potentially manipulated region worth a human look — not proof that the region
-was edited.**
+A hot patch means the whole-image detector responded strongly when that crop
+was shown to it. It is an explainability aid, **not an edit-segmentation mask,
+not a probability that the region was edited, and never proof of manipulation.**
 
 ---
 
 ## Quickstart
 
-Every command below is copy-pastable from the repository root and calls
-`./.venv/bin/python` directly, so you never need to activate the virtualenv.
-
-### 1. Install dependencies
+### One command
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install --upgrade pip
-./.venv/bin/python -m pip install -r requirements.txt
+python3 scripts/setup.py --all
 ```
 
-### 2. Download the detector checkpoint
+That creates the virtualenv, installs `requirements.txt`, downloads the 2.11 GB
+model checkpoint (resuming if interrupted) and fetches a ~2 GB evaluation
+sample. It prompts before each large download; add `--yes` to skip prompts.
+Everything is idempotent, so re-running it is safe.
 
-2.11 GB, roughly 8 minutes. `-C -` resumes if the connection drops, so it is
-safe to re-run.
+Just the code and the model, no dataset:
 
 ```bash
-mkdir -p models/pretrained
-curl -L --fail --progress-bar -C - \
-  https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt \
-  -o models/pretrained/pytorch_model.pt
+python3 scripts/setup.py
 ```
 
-Check it arrived intact — the size must be exactly `2105483083`:
+### Check what you have
 
 ```bash
-ls -l models/pretrained/pytorch_model.pt
+python3 scripts/setup.py --check
 ```
 
-### 3. Run your first prediction
+```
+Project status
+------------------------------------------------------------------
+  OK       Virtualenv           Python 3.14.2
+  OK       Dependencies         all present
+  OK       Model checkpoint     2.0 GB, size verified
+  OK       Sample image         bundled
+  optional Evaluation dataset   not downloaded
+  optional Calibration          not fitted
+------------------------------------------------------------------
+```
+
+Anything missing prints the exact command that fixes it. Exit code is `0` when
+everything required is present, `1` otherwise, so it works in CI.
+
+### Run it
 
 ```bash
 ./.venv/bin/python scripts/run_inference.py \
   --input-dir data/cifake_sample \
   --checkpoint models/pretrained/pytorch_model.pt \
-  --config configs/config.yaml \
   --no-transformations \
-  --output outputs/cifake_predictions.json
+  --output outputs/predictions.json
 
-cat outputs/cifake_predictions.json
+cat outputs/predictions.json
 ```
 
-Expected shape (`pred` is the AI-generated probability):
+`pred` is the AI-generated probability:
 
 ```json
 [
@@ -159,41 +285,90 @@ Expected shape (`pred` is the AI-generated probability):
 ]
 ```
 
-`image_path` is absolute by default. Add `--relative-paths` to write paths
-relative to `--input-dir` instead:
+Paths are absolute by default; add `--relative-paths` for paths relative to
+`--input-dir`. No config edit is needed — the loader recognises the checkpoint
+from its tensor signature and selects `bombek_siglip2_dinov2` automatically.
 
-```bash
-./.venv/bin/python scripts/run_inference.py \
-  --input-dir data/cifake_sample \
-  --checkpoint models/pretrained/pytorch_model.pt \
-  --no-transformations \
-  --relative-paths \
-  --output outputs/cifake_predictions.json
-```
-
-No config edit is needed. The loader identifies this checkpoint from its tensor
-signature and selects `bombek_siglip2_dinov2` automatically, overriding
-`model.name` in the config.
-
-### 4. Launch the web demo
+### Web demo
 
 ```bash
 ./.venv/bin/streamlit run app.py
 ```
 
-**One manual step:** the sidebar defaults to `checkpoints/best.pt`, which does
-not exist, so the app opens on *"Model setup required"*. Paste this into the
-sidebar's **Model checkpoint** field:
+It defaults to the checkpoint `setup.py` downloads, so it works immediately.
 
-```
-models/pretrained/pytorch_model.pt
-```
+### On Apple Silicon
 
-To make the default work instead, link it once:
+Add `--device mps` to any command — it is about **8.9× faster** than CPU and
+was verified to produce matching probabilities.
+
+---
+
+## Manual setup
+
+If you would rather not use `setup.py`, or it fails on your platform:
+
+### 1. Dependencies
 
 ```bash
-ln -s ../models/pretrained/pytorch_model.pt checkpoints/best.pt
+python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
 ```
+
+Verified from scratch: a clean clone plus a clean virtualenv installed only
+from `requirements.txt` runs the full 375-test suite green.
+
+### 2. Model checkpoint (2.11 GB)
+
+```bash
+mkdir -p models/pretrained
+curl -L --fail --progress-bar -C - \
+  https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt \
+  -o models/pretrained/pytorch_model.pt
+```
+
+The size must be exactly `2105483083` bytes:
+
+```bash
+ls -l models/pretrained/pytorch_model.pt
+```
+
+### 3. Evaluation dataset (optional, ~2 GB)
+
+Only needed to reproduce the evaluation numbers; inference works without it.
+
+```bash
+./.venv/bin/python scripts/download_dataset.py --split validation --shards 4 --yes
+./.venv/bin/python scripts/extract_dataset.py          # unpack to image files
+```
+
+### 4. Calibration (optional)
+
+Needs the dataset. Without it, scores are uncalibrated and the demo says so.
+
+```bash
+./.venv/bin/python scripts/evaluate_confidence.py \
+  --save-calibration outputs/calibration.json
+```
+
+---
+
+## What is and is not in the repository
+
+| | In git? | How to get it |
+|---|---|---|
+| All source, tests, configs | yes | `git clone` |
+| Sample image (`data/cifake_sample/`) | yes | `git clone` |
+| Evaluation results (`outputs/protocol/`, `outputs/patch_ablation/`) | yes | `git clone` |
+| **Model checkpoint** (2.11 GB) | **no** | `scripts/setup.py --checkpoint` |
+| **Dataset** (~2 GB) | **no** | `scripts/setup.py --dataset` |
+| **Calibration parameters** | **no** | `scripts/evaluate_confidence.py` |
+
+The three large or machine-specific items are git-ignored deliberately: GitHub
+rejects files over 100 MB, and git keeps blobs forever once added. Every one of
+them has a one-command fetch, and the pipeline degrades with a clear message
+rather than crashing when any is absent.
 
 ---
 
@@ -324,7 +499,8 @@ CUDA, Apple MPS and CPU are all supported (`inference.device: auto`).
 **A trained checkpoint is required.** Without one, every entry point stops with
 an actionable setup error — the pipeline never fabricates predictions.
 
-Place your checkpoint at `checkpoints/best.pt`, or pass `--checkpoint`.
+The default is `models/pretrained/pytorch_model.pt`, where `scripts/setup.py`
+puts it. Override with `--checkpoint` or `paths.checkpoint_dir`.
 Full format details, supported architectures and the preprocessing contract are
 in [`models/README.md`](models/README.md).
 
@@ -393,12 +569,9 @@ see [`models/README.md`](models/README.md) for the full key-level comparison.
 ./.venv/bin/streamlit run app.py
 ```
 
-The sidebar defaults to `checkpoints/best.pt`. If your checkpoint is elsewhere,
-paste its path into the **Model checkpoint** field, for example:
-
-```
-models/pretrained/pytorch_model.pt
-```
+The sidebar defaults to `models/pretrained/pytorch_model.pt`, so the demo works
+with no manual step after `scripts/setup.py`. Point it elsewhere by editing the
+**Model checkpoint** field.
 
 Upload one JPG/JPEG/PNG/WEBP image to see:
 
@@ -492,7 +665,10 @@ The detailed record additionally carries `patch_analysis` (every patch's
 coordinates and score, `heatmap_coverage`, and the settings used),
 `fusion_detail` (weights, components and any `fallback_reason`),
 `confidence_detail`, `consistency_detail`, `metadata`, `explainability` and
-`errors`.
+`errors`. Its `calibrated_probability` is the calibrated **clean-view** score,
+or `null` when no calibrator is loaded. `pred`/`final_probability` is the fused
+score and is described separately by `probability_kind`; calibration is not
+falsely claimed to have been fitted after fusion.
 
 The remaining legacy fields:
 
@@ -625,8 +801,10 @@ feature. Outputs land in `outputs/patch_ablation/` as `ablation.json`,
 
 ### Ablation result: patch analysis is explainability, not scoring
 
-Measured on **60 SID_Set images**, threshold 0.42 frozen across all modes
-(`outputs/patch_ablation/`):
+Measured on **60 SID_Set images**, threshold **0.42** frozen across all modes
+(`outputs/patch_ablation/`). *The threshold is historical (pre-calibration); the
+conclusion — patch evidence does not earn a scoring weight — is current and is
+why `fusion.mode` is `rgb_transform`.*
 
 | Mode | Accuracy | F1 | Recall | FPR | AUROC | passes/img | s/img | Coverage |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -756,19 +934,17 @@ final = 0.7 · whole_image + 0.3 · mean(transformed versions)
 ```
 
 Patch evidence carries **no** fusion weight: an ablation found it degraded F1
-and recall (see *Ablation result* under Patch-level analysis). The three-term
-mode `whole_patch_transform` remains available for re-testing:
+and recall (see *Ablation result* under Patch-level analysis).
 
-```
-final = 0.60 · whole_image
-      + 0.20 · mean(transformed versions)
-      + 0.20 · patch_evidence
-```
+> **Historical — not the shipped mode.** A three-term mode
+> `whole_patch_transform` (`0.60 · whole_image + 0.20 · mean(transformed) +
+> 0.20 · patch_evidence`) remains in the code so the decision can be re-tested
+> after a retrain. It is **not** in use and its weights do not affect any
+> reported number. Do not quote it as the fusion formula.
 
 Whole-image scoring carries the most weight because it is what the model was
 trained to produce. The transformed mean rewards predictions that survive
-redistribution. The patch term lets a locally edited region raise the score on
-an image that looks authentic overall.
+redistribution.
 
 **Every term degrades safely.** If patch analysis is unavailable — disabled, the
 image is too small to tile, or a patch pass failed — its weight is dropped and
@@ -785,17 +961,23 @@ All weights live under `fusion` in `configs/config.yaml`.
 
 ### Confidence
 
+**Current (shipped) formula — patch agreement carries no weight:**
+
 ```
-score = 0.35 · decisiveness
-      + 0.25 · version agreement
-      + 0.25 · transformation consistency
-      + 0.15 · patch agreement
+score = 0.40 · decisiveness
+      + 0.30 · version agreement
+      + 0.30 · transformation consistency
 ```
 
 *Decisiveness* is `2 × |p − 0.5|`. *Version agreement* is the share of image
 versions landing on the same side of the threshold as the original.
-*Consistency* is the transformation-consistency score. *Patch agreement* is the
-share of patches agreeing with the whole-image verdict.
+*Consistency* is the transformation-consistency score.
+
+> **Historical — no longer used.** An earlier build added a fourth term,
+> `+ 0.15 · patch agreement`. It was **removed on measured evidence**: including
+> it made confidence *worse* at separating correct from incorrect predictions
+> (AUROC 0.7684 → 0.7415). `confidence.patch_agreement_weight` is `0.0`; a
+> weight of zero drops the term entirely rather than leaving it inert.
 
 Scores map to High (≥0.70), Medium (≥0.45) and Low. An `Uncertain` verdict is
 never reported as High confidence.
@@ -949,10 +1131,10 @@ outputs/protocol/
 
 ### What these results may and may not claim
 
-**Dataset-source holdout — genuine.** The checkpoint records training on
-OpenFake; evaluation runs on SID_Set, a different dataset with different
-collection procedures. Cross-dataset generalisation may be claimed at the
-sample size actually evaluated.
+**Dataset-source holdout — not verifiable.** The loaded checkpoint metadata in
+the cached protocol run does not identify its training dataset. SID_Set overlap
+therefore cannot be ruled out, and no dataset-source generalisation claim is
+made. A README statement or filename is not accepted as checkpoint provenance.
 
 **Unseen generator — NOT established.** SID_Set does not publish per-generator
 labels. The protocol reports `full_synthetic` and `tampered` as *generation-process
@@ -1075,6 +1257,13 @@ retained: nothing measurably beat it.
 
 ## Measured results
 
+> ### ⚠️ HISTORICAL — threshold 0.42, superseded
+>
+> The numbers in this section were produced **before calibration was fitted**,
+> at threshold **0.42**. The shipped system uses the calibrated threshold
+> **0.69**. These are kept for provenance and **must not be compared directly**
+> with current results. Current results are in `FINAL_RESULTS.md`.
+
 From `outputs/protocol/metrics.json`. **120 SID_Set validation images** (48 for
 threshold selection, **72 held-out test**), Bombek1 checkpoint, threshold
 **0.42** fixed on clean validation data and never retuned. Reproduce with
@@ -1131,10 +1320,9 @@ Diagnosis from the cached scores:
   rescued only **2**.
 
 The gain on tampered images and the inflation on authentic ones roughly cancel.
-**On this evidence the patch term does not earn its 0.2 weight**, and the
-default `fusion.mode: whole_patch_transform` is not justified by these numbers.
-It has deliberately **not** been changed — retuning fusion weights on 72 test
-images would be fitting to the sample. Re-measure at larger n before deciding;
+**On this evidence the patch term does not earn its 0.2 weight.** The shipped
+`fusion.mode` is therefore `rgb_transform`, with patch evidence excluded from
+probability scoring entirely. Re-measure at larger n before deciding;
 a detector trained with locally-edited examples is the more likely real fix.
 
 ### Runtime
@@ -1395,7 +1583,8 @@ Please read this section before quoting any number from this system.
 - **Hackathon-scale proof of concept.** Not a production moderation system, and
   deliberately not a platform-wide one.
 - **The model must have fewer than 2 billion parameters**, enforced at load
-  time. The supported backbones are 5–29 M parameters.
+  time. The verified Bombek1 dual-backbone checkpoint has 740.37 M parameters;
+  the optional torchvision backbones are smaller.
 - **Accuracy depends entirely on the supplied checkpoint.** This repository
   contributes robustness measurement and a reproducible pipeline, not a model.
 - **The WildFake validation subset must not be used for training.** It is

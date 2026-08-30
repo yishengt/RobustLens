@@ -42,6 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-dir", default="data/sid_set")
     parser.add_argument("--split", default="validation")
     parser.add_argument("--checkpoint", default="models/pretrained/pytorch_model.pt")
+    parser.add_argument(
+        "--adapter-dir", default=None, help="Optional fine-tuned adapter applied to the base checkpoint"
+    )
     parser.add_argument("--config", default="configs/config.yaml")
     parser.add_argument("--output-dir", default="outputs/protocol")
     parser.add_argument("--limit", type=int, default=120, help="Total images to score")
@@ -92,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     from src.evaluation.sid_set import find_shards, iter_labelled_images
     from src.pipeline.model_loader import ModelSetupError, load_model
     from src.pipeline.preprocessing import Preprocessor
-    from src.utils.config import load_config
+    from src.utils.config import load_config, resolve_config_path
     from src.utils.device import describe_device
 
     output_dir = Path(args.output_dir)
@@ -106,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config)
+        generator_status = P.validate_generator_generalisation_config(config)
     except (FileNotFoundError, ValueError) as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2
@@ -126,6 +130,15 @@ def main(argv: list[str] | None = None) -> int:
     # ---------------- scoring pass (the expensive part) -------------------
     if args.reuse_scores and scores_path.is_file():
         cached = json.loads(scores_path.read_text(encoding="utf-8"))
+        adapter_path = resolve_config_path(config, args.adapter_dir) if args.adapter_dir else None
+        expected_adapter = str(adapter_path.resolve()) if adapter_path else None
+        if cached.get("adapter_dir") != expected_adapter:
+            print(
+                "Cached scores were produced with a different adapter. Refusing to "
+                "reuse them; rerun without --reuse-scores.",
+                file=sys.stderr,
+            )
+            return 2
         records = [P.ScoredImage.from_dict(row) for row in cached["records"]]
         model_summary = cached.get("model", {})
         device_description = cached.get("device", "cached")
@@ -133,7 +146,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         try:
             bundle = load_model(args.checkpoint, config, device=args.device)
-        except ModelSetupError as exc:
+            if args.adapter_dir:
+                from src.finetune.model import load_saved_adapter_into_model
+
+                load_saved_adapter_into_model(
+                    bundle.model, resolve_config_path(config, args.adapter_dir)
+                )
+        except (ModelSetupError, FileNotFoundError, ValueError, RuntimeError) as exc:
             print(f"Model setup error: {exc}", file=sys.stderr)
             return 3
         model_summary = bundle.summary()
@@ -177,6 +196,11 @@ def main(argv: list[str] | None = None) -> int:
                     "model": model_summary,
                     "device": device_description,
                     "shards": [shard.name for shard in shards],
+                    "adapter_dir": (
+                        str(resolve_config_path(config, args.adapter_dir).resolve())
+                        if args.adapter_dir
+                        else None
+                    ),
                 },
                 indent=2,
             ),
@@ -292,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         "claims": {
             "dataset_source_holdout": P.dataset_holdout_statement(training_dataset),
             "unseen_generator": P.generator_claim_statement(),
+            "generator_generalisation_configuration": generator_status,
         },
         "configuration": {
             "transformations": config.get("transformations"),

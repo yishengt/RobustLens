@@ -1,0 +1,237 @@
+{
+  "config": "/Users/liren/Desktop/TechJam/configs/lora_finetune_smoke.yaml",
+  "augmentation": [
+    "jpeg_70",
+    "blur_0.5",
+    "resize_0.5x",
+    "color_jitter"
+  ],
+  "variants": {
+    "classification_only": {
+      "enabled": false,
+      "weight": 0.0,
+      "method": "mse"
+    },
+    "consistency_mse": {
+      "enabled": true,
+      "weight": 0.5,
+      "method": "mse"
+    },
+    "consistency_kl": {
+      "enabled": true,
+      "weight": 0.5,
+      "method": "kl"
+    }
+  },
+  "results": {
+    "classification_only": {
+      "consistency": {
+        "enabled": false,
+        "weight": 0.0,
+        "method": "mse",
+        "same_label_pairs_only": true
+      },
+      "best_epoch": 1,
+      "runtime_seconds": 250.0,
+      "validation": {
+        "loss": 0.7337046828534868,
+        "accuracy": 0.5294117647058824,
+        "precision": 0.5294117647058824,
+        "recall": 1.0,
+        "f1": 0.6923076923076924,
+        "auroc": 0.5138888888888888,
+        "fpr": 1.0,
+        "balanced_accuracy": 0.5,
+        "threshold": 0.5,
+        "consistency_loss": 0.0
+      },
+      "test": {
+        "loss": 0.699380099773407,
+        "accuracy": 0.6,
+        "precision": 0.6,
+        "recall": 1.0,
+        "f1": 0.7499999999999999,
+        "auroc": 0.4479166666666667,
+        "fpr": 1.0,
+        "balanced_accuracy": 0.5,
+        "threshold": 0.5,
+        "consistency_loss": 0.0
+      },
+      "test_subgroups": {
+        "authentic": {
+          "loss": NaN,
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "auroc": null,
+          "fpr": 1.0,
+          "balanced_accuracy": 0.0,
+          "threshold": 0.5
+        },
+        "synthetic": null,
+        "minor_edit": {
+          "loss": NaN,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "auroc": null,
+          "fpr": 0.0,
+          "balanced_accuracy": 0.5,
+          "threshold": 0.5
+        },
+        "moderate_edit": null,
+        "transformed": null
+      }
+    },
+    "consistency_mse": {
+      "consistency": {
+        "enabled": true,
+        "weight": 0.5,
+        "method": "mse",
+        "same_label_pairs_only": true
+      },
+      "best_epoch": 1,
+      "runtime_seconds": 122.48,
+      "validation": {
+        "loss": 0.7337435053454505,
+        "accuracy": 0.5294117647058824,
+        "precision": 0.5294117647058824,
+        "recall": 1.0,
+        "f1": 0.6923076923076924,
+        "auroc": 0.5138888888888888,
+        "fpr": 1.0,
+        "balanced_accuracy": 0.5,
+        "threshold": 0.5,
+        "consistency_loss": 0.0
+      },
+      "test": {
+        "loss": 0.6993387997150421,
+        "accuracy": 0.6,
+        "precision": 0.6,
+        "recall": 1.0,
+        "f1": 0.7499999999999999,
+        "auroc": 0.4375,
+        "fpr": 1.0,
+        "balanced_accuracy": 0.5,
+        "threshold": 0.5,
+        "consistency_loss": 0.0
+      },
+      "test_subgroups": {
+        "authentic": {
+          "loss": NaN,
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "auroc": null,
+          "fpr": 1.0,
+          "balanced_accuracy": 0.0,
+          "threshold": 0.5
+        },
+        "synthetic": null,
+        "minor_edit": {
+          "loss": NaN,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "auroc": null,
+          "fpr": 0.0,
+          "balanced_accuracy": 0.5,
+          "threshold": 0.5
+        },
+        "moderate_edit": null,
+        "transformed": null
+      }
+    },
+    "consistency_kl": {
+      "consistency": {
+        "enabled": true,
+        "weight": 0.5,
+        "method": "kl",
+        "same_label_pairs_only": true
+      },
+      "best_epoch": 1,
+      "runtime_seconds": 113.45,
+      "validation": {
+        "loss": 0.73371136519644,
+        "accuracy": 0.5294117647058824,
+        "precision": 0.5294117647058824,
+        "recall": 1.0,
+        "f1": 0.6923076923076924,
+        "auroc": 0.5138888888888888,
+        "fpr": 1.0,
+        "balanced_accuracy": 0.5,
+        "threshold": 0.5,
+        "consistency_loss": 0.0
+      },
+      "test": {
+        "loss": 0.6993773221969605,
+        "accuracy": 0.6,
+        "precision": 0.6,
+        "recall": 1.0,
+        "f1": 0.7499999999999999,
+        "auroc": 0.4479166666666667,
+        "fpr": 1.0,
+        "balanced_accuracy": 0.5,
+        "threshold": 0.5,
+        "consistency_loss": 0.0
+      },
+      "test_subgroups": {
+        "authentic": {
+          "loss": NaN,
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "auroc": null,
+          "fpr": 1.0,
+          "balanced_accuracy": 0.0,
+          "threshold": 0.5
+        },
+        "synthetic": null,
+        "minor_edit": {
+          "loss": NaN,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "auroc": null,
+          "fpr": 0.0,
+          "balanced_accuracy": 0.5,
+          "threshold": 0.5
+        },
+        "moderate_edit": null,
+        "transformed": null
+      }
+    }
+  },
+  "decision": {
+    "rule": "Keep the consistency loss only if F1 or recall improves by >= 0.01 with authentic FPR rising by <= 0.05.",
+    "baseline": "classification_only",
+    "candidates": {
+      "consistency_mse": {
+        "gains": {
+          "f1": 0.0,
+          "recall": 0.0,
+          "auroc": -0.010417
+        },
+        "fpr_delta": 0.0,
+        "passed": false
+      },
+      "consistency_kl": {
+        "gains": {
+          "f1": 0.0,
+          "recall": 0.0,
+          "auroc": 0.0
+        },
+        "fpr_delta": 0.0,
+        "passed": false
+      }
+    },
+    "keep": null,
+    "verdict": "Keep the classification-only loss; no consistency variant met the bar."
+  }
+}

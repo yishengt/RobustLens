@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""One-command setup, and a doctor that says exactly what is missing.
+
+    python3 scripts/setup.py --check     # what do I have? what is missing?
+    python3 scripts/setup.py             # deps + checkpoint (prompts first)
+    python3 scripts/setup.py --all --yes # deps + checkpoint + dataset, no prompts
+
+Runs on the system Python: it creates the virtualenv, so it cannot assume one
+exists. Every step is idempotent and safe to re-run -- a half-finished
+checkpoint download resumes rather than restarting.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+VENV = PROJECT_ROOT / ".venv"
+VENV_PYTHON = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+CHECKPOINT = PROJECT_ROOT / "models/pretrained/pytorch_model.pt"
+CHECKPOINT_URL = (
+    "https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt"
+)
+CHECKPOINT_BYTES = 2_105_483_083
+
+DATASET_DIR = PROJECT_ROOT / "data/sid_set"
+CALIBRATION = PROJECT_ROOT / "outputs/calibration.json"
+SAMPLE_IMAGE = PROJECT_ROOT / "data/cifake_sample/0000.jpg"
+
+GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+
+
+def colour(text: str, code: str) -> str:
+    return text if not sys.stdout.isatty() else f"{code}{text}{RESET}"
+
+
+def human(size: float) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+# ---------------------------------------------------------------------------
+# Status
+# ---------------------------------------------------------------------------
+
+
+def venv_status() -> tuple[bool, str]:
+    if not VENV_PYTHON.exists():
+        return False, "not created"
+    try:
+        version = subprocess.run(
+            [str(VENV_PYTHON), "-c", "import sys; print('.'.join(map(str, sys.version_info[:3])))"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout.strip()
+        return True, f"Python {version}"
+    except (subprocess.SubprocessError, OSError):
+        return False, "present but unusable"
+
+
+def dependency_status() -> tuple[bool, str]:
+    if not VENV_PYTHON.exists():
+        return False, "no virtualenv yet"
+    # importlib.util must be imported explicitly; `import importlib` alone does
+    # not bind the submodule on every Python version.
+    probe = (
+        "import importlib.util\n"
+        "mods=['torch','torchvision','PIL','numpy','yaml','transformers','peft','timm',"
+        "'streamlit','pandas','matplotlib','scipy','huggingface_hub','pyarrow','pytest']\n"
+        "print(','.join(m for m in mods if importlib.util.find_spec(m) is None))\n"
+    )
+    result = subprocess.run(
+        [str(VENV_PYTHON), "-c", probe], capture_output=True, text=True, timeout=300
+    )
+    missing = [m for m in result.stdout.strip().split(",") if m]
+    if missing:
+        return False, f"missing: {', '.join(missing)}"
+    return True, "all present"
+
+
+def checkpoint_status() -> tuple[bool, str]:
+    if not CHECKPOINT.exists():
+        return False, "not downloaded (2.11 GB)"
+    size = CHECKPOINT.stat().st_size
+    if size != CHECKPOINT_BYTES:
+        return False, f"incomplete: {human(size)} of {human(CHECKPOINT_BYTES)}"
+    return True, f"{human(size)}, size verified"
+
+
+def dataset_status() -> tuple[bool, str]:
+    shards = sorted(DATASET_DIR.rglob("*.parquet")) if DATASET_DIR.exists() else []
+    if not shards:
+        return False, "not downloaded (optional; needed only for evaluation)"
+    total = sum(s.stat().st_size for s in shards)
+    return True, f"{len(shards)} shard(s), {human(total)}"
+
+
+def calibration_status() -> tuple[bool, str]:
+    if not CALIBRATION.exists():
+        return False, "not fitted (optional; scores stay uncalibrated)"
+    try:
+        payload = json.loads(CALIBRATION.read_text(encoding="utf-8"))
+        return True, f"{payload.get('method', '?')} fitted on {payload.get('fitted_on', '?')}"
+    except (OSError, json.JSONDecodeError):
+        return False, "present but unreadable"
+
+
+CHECKS = [
+    ("Virtualenv", venv_status, True, "python3 scripts/setup.py"),
+    ("Dependencies", dependency_status, True, "python3 scripts/setup.py"),
+    ("Model checkpoint", checkpoint_status, True, "python3 scripts/setup.py --checkpoint"),
+    (
+        "Sample image",
+        lambda: (SAMPLE_IMAGE.exists(), "bundled" if SAMPLE_IMAGE.exists() else "missing"),
+        True,
+        "re-clone the repository",
+    ),
+    ("Evaluation dataset", dataset_status, False, "python3 scripts/setup.py --dataset"),
+    (
+        "Calibration",
+        calibration_status,
+        False,
+        "./.venv/bin/python scripts/evaluate_confidence.py --save-calibration outputs/calibration.json",
+    ),
+]
+
+
+def run_check() -> int:
+    print("\nProject status\n" + "-" * 66)
+    blocking = 0
+    for name, probe, required, fix in CHECKS:
+        ok, detail = probe()
+        if ok:
+            mark = colour("OK      ", GREEN)
+        elif required:
+            mark = colour("MISSING ", RED)
+            blocking += 1
+        else:
+            mark = colour("optional", YELLOW)
+        print(f"  {mark} {name:<20} {detail}")
+        if not ok:
+            print(f"           {colour('fix: ' + fix, DIM)}")
+    print("-" * 66)
+    if blocking:
+        print(
+            f"{colour(str(blocking) + ' required item(s) missing.', RED)} "
+            f"Run: python3 scripts/setup.py --all"
+        )
+    else:
+        print(colour("Ready to run inference.", GREEN))
+        print("  ./.venv/bin/python scripts/run_inference.py --input-dir data/cifake_sample \\")
+        print("    --checkpoint models/pretrained/pytorch_model.pt --no-transformations \\")
+        print("    --output outputs/predictions.json")
+    print()
+    return 0 if blocking == 0 else 1
+
+
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
+
+
+def create_venv() -> bool:
+    ok, detail = venv_status()
+    if ok:
+        print(f"  virtualenv already present ({detail})")
+        return True
+    print(f"  creating virtualenv at {VENV} ...")
+    result = subprocess.run([sys.executable, "-m", "venv", str(VENV)])
+    if result.returncode != 0:
+        print(colour("  failed to create the virtualenv", RED))
+        return False
+    subprocess.run([str(VENV_PYTHON), "-m", "pip", "install", "--quiet", "--upgrade", "pip"])
+    return True
+
+
+def install_dependencies() -> bool:
+    print("  installing requirements.txt (a few minutes on first run) ...")
+    result = subprocess.run(
+        [str(VENV_PYTHON), "-m", "pip", "install", "-r", str(PROJECT_ROOT / "requirements.txt")]
+    )
+    return result.returncode == 0
+
+
+def download_checkpoint(assume_yes: bool) -> bool:
+    ok, detail = checkpoint_status()
+    if ok:
+        print(f"  checkpoint already present ({detail})")
+        return True
+    if not assume_yes:
+        answer = input(f"  Download the model checkpoint ({human(CHECKPOINT_BYTES)})? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("  skipped.")
+            return False
+
+    CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
+    existing = CHECKPOINT.stat().st_size if CHECKPOINT.exists() else 0
+    request = urllib.request.Request(CHECKPOINT_URL)
+    if existing:
+        # Resume rather than restart a partial 2 GB download.
+        request.add_header("Range", f"bytes={existing}-")
+        print(f"  resuming from {human(existing)} ...")
+    else:
+        print(f"  downloading {human(CHECKPOINT_BYTES)} ...")
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            mode = "ab" if existing and response.status == 206 else "wb"
+            if mode == "wb":
+                existing = 0
+            downloaded = existing
+            with CHECKPOINT.open(mode) as handle:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    percent = 100 * downloaded / CHECKPOINT_BYTES
+                    print(
+                        f"\r    {human(downloaded)} / {human(CHECKPOINT_BYTES)} ({percent:5.1f}%)",
+                        end="",
+                        flush=True,
+                    )
+        print()
+    except Exception as exc:  # network errors of every shape
+        print(f"\n  {colour('download failed', RED)}: {type(exc).__name__}: {exc}")
+        print("  Re-run this command; the download resumes where it stopped.")
+        return False
+
+    ok, detail = checkpoint_status()
+    print(f"  {colour('checkpoint ready', GREEN) if ok else colour('checkpoint ' + detail, RED)}")
+    return ok
+
+
+def download_dataset(assume_yes: bool, shards: int) -> bool:
+    ok, detail = dataset_status()
+    if ok:
+        print(f"  dataset already present ({detail})")
+        return True
+    if not assume_yes:
+        answer = input(f"  Download {shards} SID_Set shard(s) (~{shards * 0.5:.1f} GB)? [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("  skipped.")
+            return False
+    result = subprocess.run(
+        [
+            str(VENV_PYTHON),
+            str(PROJECT_ROOT / "scripts/download_dataset.py"),
+            "--split",
+            "validation",
+            "--shards",
+            str(shards),
+            "--yes",
+        ]
+    )
+    return result.returncode == 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Set up the project, or report exactly what is missing.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--check", action="store_true", help="Report status and exit")
+    parser.add_argument("--all", action="store_true", help="Also download the evaluation dataset")
+    parser.add_argument("--checkpoint", action="store_true", help="Only download the checkpoint")
+    parser.add_argument("--dataset", action="store_true", help="Only download the dataset")
+    parser.add_argument("--shards", type=int, default=4, help="Dataset shards to fetch")
+    parser.add_argument("--yes", "-y", action="store_true", help="Do not prompt")
+    parser.add_argument("--skip-checkpoint", action="store_true", help="Set up code only")
+    args = parser.parse_args(argv)
+
+    if args.check:
+        return run_check()
+
+    print("\nSetting up: Robust Detection of AI-Generated Images\n" + "=" * 66)
+
+    if args.checkpoint or args.dataset:
+        if args.checkpoint and not download_checkpoint(args.yes):
+            return 1
+        if args.dataset:
+            if not VENV_PYTHON.exists():
+                print(colour("  create the virtualenv first: python3 scripts/setup.py", RED))
+                return 1
+            if not download_dataset(args.yes, args.shards):
+                return 1
+        return run_check()
+
+    print("\n[1/4] Virtualenv")
+    if not create_venv():
+        return 1
+
+    print("\n[2/4] Dependencies")
+    if not install_dependencies():
+        print(colour("  dependency installation failed", RED))
+        return 1
+
+    print("\n[3/4] Model checkpoint")
+    if args.skip_checkpoint:
+        print("  skipped (--skip-checkpoint)")
+    else:
+        download_checkpoint(args.yes)
+
+    print("\n[4/4] Evaluation dataset")
+    if args.all:
+        download_dataset(args.yes, args.shards)
+    else:
+        print("  skipped (optional; add --all, or run --dataset later)")
+
+    return run_check()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

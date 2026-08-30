@@ -1,0 +1,248 @@
+{
+  "fine_tuned": {
+    "test": {
+      "accuracy": 0.6,
+      "auroc": 0.3541666666666667,
+      "balanced_accuracy": 0.5,
+      "consistency_loss": 0.0,
+      "f1": 0.7499999999999999,
+      "fpr": 1.0,
+      "loss": 0.6975509583950043,
+      "precision": 0.6,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 8,
+          "metrics": {
+            "accuracy": 0.0,
+            "auroc": null,
+            "balanced_accuracy": 0.0,
+            "f1": 0.0,
+            "fpr": 1.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 8,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 12,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 12
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 0,
+          "metrics": null
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.5294117647058824,
+      "auroc": 0.5416666666666666,
+      "balanced_accuracy": 0.5,
+      "consistency_loss": 0.0,
+      "f1": 0.6923076923076924,
+      "fpr": 1.0,
+      "loss": 0.7116874390178256,
+      "precision": 0.5294117647058824,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 8,
+          "metrics": {
+            "accuracy": 0.0,
+            "auroc": null,
+            "balanced_accuracy": 0.0,
+            "f1": 0.0,
+            "fpr": 1.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 8,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 9,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 9
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 0,
+          "metrics": null
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  "original": {
+    "test": {
+      "accuracy": 0.6,
+      "auroc": 0.5104166666666666,
+      "balanced_accuracy": 0.5,
+      "consistency_loss": 0.0,
+      "f1": 0.7499999999999999,
+      "fpr": 1.0,
+      "loss": 2.2257189441355876,
+      "precision": 0.6,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 8,
+          "metrics": {
+            "accuracy": 0.0,
+            "auroc": null,
+            "balanced_accuracy": 0.0,
+            "f1": 0.0,
+            "fpr": 1.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 8,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 12,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 12
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 0,
+          "metrics": null
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.5294117647058824,
+      "auroc": 0.5694444444444444,
+      "balanced_accuracy": 0.5,
+      "consistency_loss": 0.0,
+      "f1": 0.6923076923076924,
+      "fpr": 1.0,
+      "loss": 2.4070196401379587,
+      "precision": 0.5294117647058824,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 8,
+          "metrics": {
+            "accuracy": 0.0,
+            "auroc": null,
+            "balanced_accuracy": 0.0,
+            "f1": 0.0,
+            "fpr": 1.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 8,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 9,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 9
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 0,
+          "metrics": null
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  "test_delta": {
+    "accuracy": 0.0,
+    "auroc": -0.15624999999999994,
+    "balanced_accuracy": 0.0,
+    "f1": 0.0,
+    "precision": 0.0,
+    "recall": 0.0
+  },
+  "threshold": 0.5,
+  "threshold_note": "The original and fine-tuned checkpoints are compared at the same fixed pre-training selection threshold; no test-set threshold fitting occurred."
+}

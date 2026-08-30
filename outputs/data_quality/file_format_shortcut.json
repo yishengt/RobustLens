@@ -1,0 +1,282 @@
+{
+  "count": 32,
+  "decision_preservation_rate": 0.96875,
+  "max_absolute_score_delta": 0.07008567485140471,
+  "mean_absolute_score_delta": 0.019225048419765495,
+  "mean_score_delta": -0.013421918836145597,
+  "original_metrics": {
+    "accuracy": 0.9375,
+    "auc": 1.0,
+    "average_precision": 1.0,
+    "balanced_accuracy": 0.9375,
+    "confusion_matrix": {
+      "false_negatives": 0,
+      "false_positives": 2,
+      "true_negatives": 14,
+      "true_positives": 16
+    },
+    "count": 32,
+    "f1": 0.941176,
+    "false_negative_rate": 0.0,
+    "false_positive_rate": 0.125,
+    "negatives": 16,
+    "positives": 16,
+    "precision": 0.888889,
+    "recall": 1.0,
+    "specificity": 0.875,
+    "threshold": 0.69,
+    "youden_j": 0.875
+  },
+  "output_format": "JPEG",
+  "per_image": [
+    {
+      "image_path": "data/extracted/sid_set/real/real_000ffdfec91b0c12.jpg",
+      "label": 0,
+      "original_score": 0.36585955501750433,
+      "reencoded_score": 0.3162248707584745,
+      "score_delta": -0.04963468425902984
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_001acab496bf4a0d.jpg",
+      "label": 0,
+      "original_score": 0.40572070904020935,
+      "reencoded_score": 0.40974642643610565,
+      "score_delta": 0.0040257173958963
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_002162dd05ae3e34.jpg",
+      "label": 0,
+      "original_score": 0.7788528162345492,
+      "reencoded_score": 0.7714597488497186,
+      "score_delta": -0.007393067384830587
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_002712412f6bce34.jpg",
+      "label": 0,
+      "original_score": 0.4267902297051076,
+      "reencoded_score": 0.4504987507234475,
+      "score_delta": 0.023708521018339923
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_0028c4c5ce3b7ddb.jpg",
+      "label": 0,
+      "original_score": 0.6237398220018939,
+      "reencoded_score": 0.6449824779450537,
+      "score_delta": 0.02124265594315977
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_002d16836e9fae5e.jpg",
+      "label": 0,
+      "original_score": 0.3344689320437126,
+      "reencoded_score": 0.3069174480933475,
+      "score_delta": -0.027551483950365108
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_005baac9bd26fdaf.jpg",
+      "label": 0,
+      "original_score": 0.6102089618633534,
+      "reencoded_score": 0.5733925683717451,
+      "score_delta": -0.03681639349160826
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_007805733c6fa282.jpg",
+      "label": 0,
+      "original_score": 0.6751955525156081,
+      "reencoded_score": 0.6767997293976183,
+      "score_delta": 0.0016041768820101998
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_0079cc61e4ade96f.jpg",
+      "label": 0,
+      "original_score": 0.5500001958203363,
+      "reencoded_score": 0.5464105008692245,
+      "score_delta": -0.0035896949511118326
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_007a5fc20ae3320e.jpg",
+      "label": 0,
+      "original_score": 0.7058726331464571,
+      "reencoded_score": 0.6799776873442889,
+      "score_delta": -0.025894945802168223
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_00abfbf66c2b15a0.jpg",
+      "label": 0,
+      "original_score": 0.4864448873658417,
+      "reencoded_score": 0.4908146400429951,
+      "score_delta": 0.0043697526771533934
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_00b04e32ae0e9e71.jpg",
+      "label": 0,
+      "original_score": 0.6751579096014471,
+      "reencoded_score": 0.6050722347500423,
+      "score_delta": -0.07008567485140471
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_00ddd1691d02dd14.jpg",
+      "label": 0,
+      "original_score": 0.3314024309030889,
+      "reencoded_score": 0.2992187281432562,
+      "score_delta": -0.03218370275983273
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_00e6391c77cff4de.jpg",
+      "label": 0,
+      "original_score": 0.4239706617140574,
+      "reencoded_score": 0.36477393183973567,
+      "score_delta": -0.05919672987432173
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_00e9750db73314ac.jpg",
+      "label": 0,
+      "original_score": 0.3534130371886768,
+      "reencoded_score": 0.3902940045073017,
+      "score_delta": 0.03688096731862489
+    },
+    {
+      "image_path": "data/extracted/sid_set/real/real_0151b05a2e7e123b.jpg",
+      "label": 0,
+      "original_score": 0.592997623088509,
+      "reencoded_score": 0.5397845225587699,
+      "score_delta": -0.053213100529739155
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000002.png",
+      "label": 1,
+      "original_score": 0.9623096594033931,
+      "reencoded_score": 0.9534277165749112,
+      "score_delta": -0.00888194282848187
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000008.png",
+      "label": 1,
+      "original_score": 0.9205675575880543,
+      "reencoded_score": 0.8701641473281987,
+      "score_delta": -0.05040341025985562
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000014.png",
+      "label": 1,
+      "original_score": 0.9591691571085798,
+      "reencoded_score": 0.9554709174411994,
+      "score_delta": -0.0036982396673803652
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000019.png",
+      "label": 1,
+      "original_score": 0.9615693840196528,
+      "reencoded_score": 0.9578256556063512,
+      "score_delta": -0.003743728413301506
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000021.png",
+      "label": 1,
+      "original_score": 0.9599432283022331,
+      "reencoded_score": 0.9603565319998467,
+      "score_delta": 0.0004133036976136095
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000034.png",
+      "label": 1,
+      "original_score": 0.9553805584641883,
+      "reencoded_score": 0.9529345993821191,
+      "score_delta": -0.002445959082069238
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000072.png",
+      "label": 1,
+      "original_score": 0.9528332753808756,
+      "reencoded_score": 0.9336893813908617,
+      "score_delta": -0.019143893990013927
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000074.png",
+      "label": 1,
+      "original_score": 0.9765270969941613,
+      "reencoded_score": 0.9771320753992816,
+      "score_delta": 0.0006049784051203044
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000077.png",
+      "label": 1,
+      "original_score": 0.9464927763908838,
+      "reencoded_score": 0.9326493719393318,
+      "score_delta": -0.013843404451551966
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000088.png",
+      "label": 1,
+      "original_score": 0.9465355523315111,
+      "reencoded_score": 0.9323009954068304,
+      "score_delta": -0.014234556924680675
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000101.png",
+      "label": 1,
+      "original_score": 0.9709134821022712,
+      "reencoded_score": 0.9664791828156407,
+      "score_delta": -0.0044342992866305275
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000105.png",
+      "label": 1,
+      "original_score": 0.9579855415899418,
+      "reencoded_score": 0.9510921956591128,
+      "score_delta": -0.006893345930828909
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000107.png",
+      "label": 1,
+      "original_score": 0.9715518561810513,
+      "reencoded_score": 0.9698391133919115,
+      "score_delta": -0.0017127427891397984
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000110.png",
+      "label": 1,
+      "original_score": 0.9667081744198335,
+      "reencoded_score": 0.9640250681843849,
+      "score_delta": -0.00268310623544854
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000113.png",
+      "label": 1,
+      "original_score": 0.9288597542421717,
+      "reencoded_score": 0.9074534602863646,
+      "score_delta": -0.021406293955807065
+    },
+    {
+      "image_path": "data/extracted/sid_set/ai_generated/full_synthetic_000127.png",
+      "label": 1,
+      "original_score": 0.965378952472679,
+      "reencoded_score": 0.9621118780477037,
+      "score_delta": -0.0032670744249753136
+    }
+  ],
+  "reencoded_metrics": {
+    "accuracy": 0.96875,
+    "auc": 1.0,
+    "average_precision": 1.0,
+    "balanced_accuracy": 0.96875,
+    "confusion_matrix": {
+      "false_negatives": 0,
+      "false_positives": 1,
+      "true_negatives": 15,
+      "true_positives": 16
+    },
+    "count": 32,
+    "f1": 0.969697,
+    "false_negative_rate": 0.0,
+    "false_positive_rate": 0.0625,
+    "negatives": 16,
+    "positives": 16,
+    "precision": 0.941176,
+    "recall": 1.0,
+    "specificity": 0.9375,
+    "threshold": 0.69,
+    "youden_j": 0.9375
+  },
+  "threshold": 0.69,
+  "threshold_note": "Fixed before re-encoding; never fitted on this probe."
+}

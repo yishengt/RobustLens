@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -69,6 +70,7 @@ def run_batch(
     explain_images: bool = False,
     relative_to: Optional[str | Path] = None,
     progress: Optional[Callable[[int, int, str], None]] = None,
+    adapter_dir: Optional[str | Path] = None,
 ) -> BatchReport:
     """Analyse every supported image in ``image_dir`` and write the JSON output.
 
@@ -101,9 +103,14 @@ def run_batch(
     pipeline = DetectionPipeline.from_checkpoint(
         checkpoint_path, config, device=device, explain_images=explain_images
     )
+    if adapter_dir is not None:
+        from src.finetune.model import load_saved_adapter_into_model
+
+        load_saved_adapter_into_model(pipeline.bundle.model, adapter_dir)
 
     root = Path(relative_to).expanduser() if relative_to else None
     report = BatchReport(total=len(image_paths))
+    generated_at = datetime.now(timezone.utc).isoformat()
 
     for index, path in enumerate(image_paths, start=1):
         display_path = str(path)
@@ -117,8 +124,11 @@ def run_batch(
 
         if isinstance(result, PipelineResult):
             result.image_path = display_path
-            report.simple.append(result.as_simple_dict())
-            report.detailed.append(result.as_detailed_dict())
+            simple = result.as_simple_dict()
+            detailed = result.as_detailed_dict()
+            detailed["generated_at"] = generated_at
+            report.simple.append(simple)
+            report.detailed.append(detailed)
             report.processed += 1
         else:
             failure: FailedResult = result
@@ -134,6 +144,7 @@ def run_batch(
                 report.simple.append(
                     {"image_path": display_path, "pred": float(fallback_pred)}
                 )
+            detailed["generated_at"] = generated_at
             report.detailed.append(detailed)
 
         if progress is not None:

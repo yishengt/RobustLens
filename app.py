@@ -6,7 +6,7 @@ Launch with::
 
 Upload one image to see the final classification, the AI and real
 probabilities, the confidence level, the transformation-consistency score, the
-per-transformation predictions, and a Grad-CAM heatmap where available.
+per-transformation predictions, and the patch-level risk map.
 """
 
 from __future__ import annotations
@@ -36,7 +36,9 @@ from src.pipeline.validation import ImageValidationError  # noqa: E402
 from src.utils.config import load_config, resolve_config_path  # noqa: E402
 
 DEFAULT_CONFIG = "configs/config.yaml"
-DEFAULT_CHECKPOINT = "checkpoints/best.pt"
+# Defaults to the path scripts/setup.py downloads to, so the demo works with no
+# manual step. checkpoints/best.pt is still accepted if you keep one there.
+DEFAULT_CHECKPOINT = "models/pretrained/pytorch_model.pt"
 
 
 @st.cache_resource(show_spinner="Loading detector checkpoint...")
@@ -244,28 +246,16 @@ def render_patches(result: PipelineResult) -> None:
         use_container_width=True,
     )
     st.caption(
-        "A warm patch means the detector responded strongly to that region. It is "
-        "a potentially manipulated region worth a human look - not proof that the "
-        "region was edited."
+        "A highlighted region is a suspicious region that influenced the model's "
+        "score. It is not proof of AI editing, a segmentation mask, or a "
+        "reconstruction of editing history."
     )
-
-
-def render_explainability(result: PipelineResult) -> None:
-    """Show the Grad-CAM overlay, or the reason it is unavailable."""
-
-    st.subheader("Suspicious-region heatmap")
-    explanation = result.explanation
-    if explanation is None:
-        st.info("Explainability was not run for this image.")
-        return
-    if explanation.available and explanation.overlay is not None:
-        left, right = st.columns(2)
-        if result.original_image is not None:
-            left.image(result.original_image, caption="Original", use_container_width=True)
-        right.image(explanation.overlay, caption="Grad-CAM overlay", use_container_width=True)
-        st.caption(explanation.message)
-    else:
-        st.warning(explanation.message)
+    st.caption(
+        "Patch evidence carries **zero weight** in both the reported probability "
+        "and the confidence score. It was demoted on measured evidence and is "
+        "kept purely as an explainability aid, so nothing above can move the "
+        "verdict — only help you decide where to look."
+    )
 
 
 def render_errors(result: PipelineResult) -> None:
@@ -353,8 +343,6 @@ def main() -> None:
     render_patches(result)
     st.divider()
     render_charts(result)
-    st.divider()
-    render_explainability(result)
     render_errors(result)
 
     render_calibration_status(pipeline)
