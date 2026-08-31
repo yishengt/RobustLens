@@ -27,6 +27,20 @@ if str(PROJECT_ROOT) not in sys.path:
 
 REPO_ID = "Dylennnn/techjam"
 REPO_URL = f"https://huggingface.co/{REPO_ID}"
+
+# Adapters published somewhere other than REPO_ID, as (repository, path prefix).
+# The four rejected experiments share one repository and sit under adapters/NAME/.
+# The pixel-space head was released separately in a repository of its own, where
+# the files sit at the root -- the usual layout for a single-model repository.
+ADAPTER_SOURCES = {
+    "robustness_head": ("xxxtechtation/robustlens-pixelspace-adapter", ""),
+}
+
+
+def _source_for(name: str) -> tuple[str, str]:
+    """Return the (repository, path prefix) a given adapter is published under."""
+
+    return ADAPTER_SOURCES.get(name, (REPO_ID, f"adapters/{name}"))
 DESTINATION = PROJECT_ROOT / "models" / "adapters"
 
 # Files that make up one adapter. The safetensors holds existing LoRA tensors
@@ -55,7 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--adapter", choices=sorted(ADAPTERS), help="Download one adapter")
     group.add_argument("--all", action="store_true", help="Download every adapter")
     group.add_argument("--list", action="store_true", help="List adapters and exit")
-    parser.add_argument("--repo-id", default=REPO_ID)
+    parser.add_argument(
+        "--repo-id",
+        default=None,
+        help=(
+            "Override the source repository. By default each adapter is fetched from "
+            "its own entry in ADAPTER_REPOS, falling back to " + REPO_ID
+        ),
+    )
     parser.add_argument(
         "--destination",
         default=str(DESTINATION),
@@ -66,9 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _print_catalogue() -> None:
-    print(f"Adapters published at {REPO_URL}\n")
+    print(f"Adapters published at {REPO_URL} unless noted\n")
     for name, description in sorted(ADAPTERS.items()):
         print(f"  {name}\n      {description}")
+        if name in ADAPTER_SOURCES:
+            print(f"      source: https://huggingface.co/{ADAPTER_SOURCES[name][0]}")
     print(
         "\nNone of these is used by the production pipeline. Running RobustLens "
         "needs only the base checkpoint:\n  python3 scripts/setup.py --checkpoint"
@@ -107,13 +130,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n{name}")
             print(f"  {ADAPTERS[name]}")
         for filename in ADAPTER_FILES:
-            remote = f"adapters/{name}/{filename}"
+            source_repo, prefix = _source_for(name)
+            if args.repo_id:
+                source_repo = args.repo_id
+            remote = f"{prefix}/{filename}" if prefix else filename
             # Stage into a temporary directory that is always cleaned up, so a
             # download never leaves a cache folder sitting inside models/.
             with tempfile.TemporaryDirectory(prefix="robustlens-adapter-") as staging:
                 try:
                     path = hf_hub_download(
-                        repo_id=args.repo_id,
+                        repo_id=source_repo,
                         filename=remote,
                         local_dir=staging,
                     )
