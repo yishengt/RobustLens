@@ -8,6 +8,30 @@ python3 scripts/setup.py                     # venv, deps, model checkpoint
 ./.venv/bin/streamlit run app.py             # demo
 ```
 
+> ### Compliance
+>
+> **Model size: 740,371,777 parameters — 37% of the competition's 2,000,000,000
+> limit.** Measured against the shipped checkpoint, not quoted from documentation:
+>
+> ```bash
+> ./.venv/bin/python scripts/count_params.py --checkpoint models/pretrained/pytorch_model.pt
+> ```
+>
+> | Component | Parameters | Share |
+> |---|---:|---:|
+> | SigLIP2 vision tower (frozen) | 432,206,912 | 58.4% |
+> | DINOv2 (frozen) | 306,914,304 | 41.5% |
+> | Classification head (trained here) | 1,250,561 | 0.2% |
+> | **Total** | **740,371,777** | **PASS — well under 2B** |
+>
+> **We did not train on the held-out evaluation data.** DALL·E images were removed
+> from our training set entirely — the Defactify source ships five generators and we
+> excluded its DALL·E 3 class, so the competition's DALL·E benchmark stays a genuine
+> unseen-generator test rather than a memory test. Our COCO images come from
+> `train2017`, not the banned `val2017` split: verified by caption matching against
+> the public annotations, where 997 of 997 real captions matched train2017 and none
+> matched val2017 exclusively.
+
 ---
 
 ## Why we built it
@@ -270,9 +294,14 @@ JPEG q95. 4,979 unique SHA-256, zero cross-split overlap.
 | `Midjourney` | Fake | GenImage | Midjourney | 214 | 49 | 76 | 339 |
 | **Total** | | | | **3,238** | **746** | **995** | **4,979** |
 
-**Deliberate exclusions:** DALL·E 3 (keeps the benchmark a genuine unseen-generator
-test), BigGAN (128×128 with no paired reals — upscaling would add a new shortcut),
-CIFAKE (32×32 against a 392×392 model input), COCO val2017 (banned by the brief).
+**Deliberately excluded from training:**
+
+| Excluded | Why |
+|---|---|
+| **DALL·E 3** *(removed from the Defactify source)* | Keeps the competition's DALL·E benchmark a genuine unseen-generator test |
+| **COCO val2017** | Named in the brief as off-limits; our COCO images are `train2017`, verified by caption matching |
+| BigGAN | 128×128 native with no paired reals — upscaling would introduce a new shortcut |
+| CIFAKE | 32×32 against a 392×392 model input |
 
 ### Confound audit
 
