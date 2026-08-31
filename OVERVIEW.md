@@ -173,4 +173,4 @@ Verify the parameter limit:
 - **Our authentic images are COCO and ImageNet**, both ordinary object
   photography. The tuned head over-flags polished, professional photographs.
 
-Full tables with sample sizes and confidence intervals: [`RESULTS.md`](RESULTS.md).
+Full tables with sample sizes and confidence intervals: [`README.md`](README.md).
