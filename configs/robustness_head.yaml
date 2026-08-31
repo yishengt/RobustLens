@@ -1,0 +1,78 @@
+# Head-only fine-tune of the Bombek1 SigLIP2 + DINOv2 checkpoint on a
+# multi-generator, augmentation-heavy training set.
+#
+# Goal: keep the decision stable when an image has been recompressed, blurred,
+# rescaled, noised, colour-shifted or cropped -- the transformations the
+# competition brief names.
+#
+# Augmentation is baked into the dataset rather than requested here. head_only
+# caches the frozen backbone features once, so an on-the-fly transformation
+# would be drawn a single time and reused for every epoch; the trainer refuses
+# that combination. Pre-augmented copies each get their own row and their own
+# cached feature instead. See scripts/build_augmented_train.py.
+
+model:
+  checkpoint: models/pretrained/pytorch_model.pt
+  output_adapter: models/adapters/robustness_head
+  parameter_limit: 2000000000
+  bombek:
+    siglip_model: google/siglip2-so400m-patch14-384
+    dinov2_model: vit_large_patch14_dinov2.lvd142m
+    image_size: 392
+    lora_rank: 32
+    lora_alpha: 64
+    lora_dropout: 0.1
+    hidden_dim: 512
+    classifier_dropout: 0.3
+
+lora:
+  # Documentation defaults only. The checkpoint's embedded LoRA settings win on
+  # restore, and head_only trains none of them.
+  rank: 8
+  alpha: 16
+  dropout: 0.05
+  bias: none
+  train_classifier: true
+
+training:
+  mode: head_only
+  epochs: 8                       # cheap once features are cached
+  lora_learning_rate: 0.0001      # unused in head_only
+  classifier_learning_rate: 0.0005
+  batch_size: 32
+  gradient_accumulation_steps: 1
+  early_stopping_patience: 3
+  selection_metric: f1
+  selection_threshold: 0.5
+  weight_decay: 0.01
+  seed: 42
+  # Empty on purpose: the augmentation is already in the dataset.
+  official_transformations: []
+  consistency:
+    enabled: false
+    weight: 0.5
+    method: mse
+    same_label_pairs_only: true
+
+data:
+  train_dir: data/local_edits_aug_small/train
+  validation_dir: data/local_edits_aug_small/validation
+  test_dir: data/local_edits_aug_small/test
+  masks_dir: masks
+  extensions: [".jpg", ".jpeg", ".png", ".webp"]
+  num_workers: 0
+  strict_images: false
+  include_conflicting_labels: false
+  quarantine_path: outputs/data_quality/quarantine.json
+  synthetic_mixture_dir: null
+  synthetic_mixture_fraction: 0.0
+
+evaluation:
+  # No adopted model yet, so nothing is recalibrated until the held-out
+  # comparison actually favours the fine-tune.
+  recalibrate_after_training: false
+  old_threshold: 0.69
+
+outputs:
+  directory: outputs/robustness_head
+  feature_cache_dir: outputs/robustness_head/feature_cache

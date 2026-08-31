@@ -103,12 +103,25 @@ class ConfigurationTest(unittest.TestCase):
     def test_supported_extensions(self) -> None:
         self.assertEqual(self.config["data"]["extensions"], [".jpg", ".jpeg", ".png", ".webp"])
 
-    def test_model_is_lightweight_and_within_the_limit(self) -> None:
+    def test_model_is_a_supported_architecture(self) -> None:
+        """The configured name must be one the loader can resolve.
+
+        A checkpoint whose tensors identify an architecture overrides this name
+        at load time, so this guards the fallback rather than the adopted model.
+        The 2B competition limit is measured against the real weights by
+        ``scripts/count_params.py``, not asserted against a config key.
+        """
+
         self.assertIn(
             self.config["model"]["name"],
-            {"efficientnet_b0", "resnet18", "convnext_tiny"},
+            {
+                "efficientnet_b0",
+                "resnet18",
+                "convnext_tiny",
+                "dual_backbone",
+                "bombek_siglip2_dinov2",
+            },
         )
-        self.assertLessEqual(self.config["model"]["max_parameters"], 2_000_000_000)
 
     def test_image_size_is_224(self) -> None:
         self.assertEqual(self.config["data"]["image_size"], 224)

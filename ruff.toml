@@ -1,7 +1,10 @@
 # Lint configuration for the inference pipeline.
 #
-#   ruff check src scripts app.py tests
-#   ruff format --check src scripts app.py tests
+#   ruff check .
+#   ruff format --check .
+#
+# `.` rather than an explicit file list: an explicit list silently stops
+# covering any file added later, and left the vendored model.py unchecked.
 #
 # Targets Python 3.9 so the `typing.Dict` / `typing.Optional` spellings used
 # throughout (together with `from __future__ import annotations`) are correct
@@ -23,6 +26,12 @@ ignore = [
     "E501",  # line length is handled by the formatter
     "B905",  # zip(strict=) is not available on Python 3.9
 ]
+
+# model.py is vendored verbatim from the Bombek1 detector so the checkpoint
+# deserialises against the exact classes that produced it. It is kept
+# byte-faithful to upstream and deliberately not reformatted, so that a diff
+# against the source repository stays meaningful.
+exclude = ["model.py"]
 
 [lint.per-file-ignores]
 # The Streamlit demo must extend sys.path before importing project modules.

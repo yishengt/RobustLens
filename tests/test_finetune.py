@@ -249,3 +249,38 @@ class AdapterRoundTripTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GroupIdClassDirectoryTest(unittest.TestCase):
+    """Regression: a class directory must never become an image's group id.
+
+    ``_group_id`` treats a nested parent as "one folder per original", so any
+    directory naming a CLASS rather than an original has to be stripped first.
+    Stripping only the two names in LABELS collapsed every image under the
+    supported ``synthetic/`` subgroup into a single group, which then appeared
+    in all three splits and tripped the leakage guard on a perfectly clean
+    dataset.
+    """
+
+    def test_every_subgroup_directory_yields_per_image_groups(self) -> None:
+        from src.finetune.dataset import DEFAULT_SUBGROUP_DIRECTORIES, _group_id
+
+        root = Path("/dataset/train")
+        for directory in DEFAULT_SUBGROUP_DIRECTORIES.values():
+            with self.subTest(directory=directory):
+                first = _group_id(root / directory / "image_one.jpg", root)
+                second = _group_id(root / directory / "image_two.jpg", root)
+                self.assertNotEqual(
+                    first,
+                    second,
+                    f"{directory}/ collapsed distinct images into one group {first!r}",
+                )
+                self.assertNotEqual(first, directory)
+
+    def test_a_per_original_folder_still_groups_its_versions(self) -> None:
+        from src.finetune.dataset import _group_id
+
+        root = Path("/dataset/train")
+        a = _group_id(root / "authentic" / "scene_42" / "source.jpg", root)
+        b = _group_id(root / "authentic" / "scene_42" / "edited.jpg", root)
+        self.assertEqual(a, b)

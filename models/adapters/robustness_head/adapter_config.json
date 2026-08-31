@@ -1,0 +1,606 @@
+{
+  "architecture": "bombek_siglip2_dinov2",
+  "base_model_names": {
+    "dinov2": "vit_large_patch14_dinov2.lvd142m",
+    "siglip": "google/siglip2-so400m-patch14-384"
+  },
+  "best_epoch": 3,
+  "best_validation_metrics": {
+    "accuracy": 0.9733333333333334,
+    "auroc": 0.9960666666666667,
+    "balanced_accuracy": 0.9733333333333334,
+    "consistency_loss": 0.0,
+    "f1": 0.9738562091503268,
+    "fpr": 0.04666666666666667,
+    "loss": 0.12304218334794541,
+    "precision": 0.9551282051282052,
+    "recall": 0.9933333333333333,
+    "subgroups": {
+      "authentic": {
+        "count": 150,
+        "metrics": {
+          "accuracy": 0.9533333333333334,
+          "auroc": null,
+          "balanced_accuracy": 0.4766666666666667,
+          "f1": 0.0,
+          "fpr": 0.04666666666666667,
+          "loss": NaN,
+          "precision": 0.0,
+          "recall": 0.0,
+          "threshold": 0.5
+        },
+        "negatives": 150,
+        "positives": 0
+      },
+      "minor_edit": {
+        "count": 0,
+        "metrics": null
+      },
+      "moderate_edit": {
+        "count": 0,
+        "metrics": null
+      },
+      "synthetic": {
+        "count": 150,
+        "metrics": {
+          "accuracy": 0.9933333333333333,
+          "auroc": null,
+          "balanced_accuracy": 0.49666666666666665,
+          "f1": 0.9966555183946488,
+          "fpr": 0.0,
+          "loss": NaN,
+          "precision": 1.0,
+          "recall": 0.9933333333333333,
+          "threshold": 0.5
+        },
+        "negatives": 0,
+        "positives": 150
+      },
+      "transformed": {
+        "count": 0,
+        "metrics": null
+      }
+    },
+    "threshold": 0.5
+  },
+  "bias": "none",
+  "consistency": {
+    "enabled": false,
+    "method": "mse",
+    "same_label_pairs_only": true,
+    "weight": 0.0
+  },
+  "dataset_summary": {
+    "configured_subgroups": {
+      "authentic": {
+        "directory": null,
+        "label": 0
+      },
+      "minor_edit": {
+        "directory": null,
+        "label": 1
+      },
+      "moderate_edit": {
+        "directory": null,
+        "label": 1
+      },
+      "synthetic": {
+        "directory": null,
+        "label": 1
+      },
+      "transformed": {
+        "directory": null,
+        "label": 1
+      }
+    },
+    "data_quality": {
+      "conflicting_labels_excluded": {
+        "test": 0,
+        "train": 0,
+        "validation": 0
+      },
+      "conflicting_labels_excluded_total": 0,
+      "include_conflicting_labels": false,
+      "quarantine": {
+        "path": "/Users/tohyisheng/Downloads/RobustLens-main 3/outputs/data_quality/quarantine.json",
+        "source": "manifest"
+      }
+    },
+    "group_limit": {
+      "configured": null,
+      "records_excluded": {
+        "test": 0,
+        "train": 0,
+        "validation": 0
+      },
+      "seed": 42
+    },
+    "synthetic_mixture": {
+      "available": 0,
+      "enabled": false,
+      "requested_fraction": 0.0,
+      "selected": 0,
+      "train_only": true
+    },
+    "test": {
+      "class_balance": {
+        "ai_edited_fraction": 0.5,
+        "authentic_fraction": 0.5,
+        "imbalance_ratio": 1.0
+      },
+      "class_counts": {
+        "ai_edited": 150,
+        "authentic": 150
+      },
+      "corrupted_images": 0,
+      "group_count": 300,
+      "missing_masks": 300,
+      "root": "/Users/tohyisheng/Downloads/RobustLens-main 3/data/local_edits_aug_small/test",
+      "split": "test",
+      "subgroup_counts": {
+        "authentic": 150,
+        "minor_edit": 0,
+        "moderate_edit": 0,
+        "synthetic": 150,
+        "transformed": 0
+      },
+      "total_images": 300,
+      "valid_images": 300
+    },
+    "train": {
+      "class_balance": {
+        "ai_edited_fraction": 0.5,
+        "authentic_fraction": 0.5,
+        "imbalance_ratio": 1.0
+      },
+      "class_counts": {
+        "ai_edited": 1000,
+        "authentic": 1000
+      },
+      "corrupted_images": 0,
+      "group_count": 2000,
+      "missing_masks": 2000,
+      "root": "/Users/tohyisheng/Downloads/RobustLens-main 3/data/local_edits_aug_small/train",
+      "split": "train",
+      "subgroup_counts": {
+        "authentic": 1000,
+        "minor_edit": 0,
+        "moderate_edit": 0,
+        "synthetic": 1000,
+        "transformed": 0
+      },
+      "total_images": 2000,
+      "valid_images": 2000
+    },
+    "validation": {
+      "class_balance": {
+        "ai_edited_fraction": 0.5,
+        "authentic_fraction": 0.5,
+        "imbalance_ratio": 1.0
+      },
+      "class_counts": {
+        "ai_edited": 150,
+        "authentic": 150
+      },
+      "corrupted_images": 0,
+      "group_count": 300,
+      "missing_masks": 300,
+      "root": "/Users/tohyisheng/Downloads/RobustLens-main 3/data/local_edits_aug_small/validation",
+      "split": "validation",
+      "subgroup_counts": {
+        "authentic": 150,
+        "minor_edit": 0,
+        "moderate_edit": 0,
+        "synthetic": 150,
+        "transformed": 0
+      },
+      "total_images": 300,
+      "valid_images": 300
+    },
+    "views_per_training_image": 1
+  },
+  "format": "robustlens_existing_lora",
+  "lora_alpha": 64,
+  "lora_dropout": 0.1,
+  "mode": "head_only",
+  "original_vs_fine_tuned": {
+    "fine_tuned": {
+      "test": {
+        "accuracy": 0.9466666666666667,
+        "auroc": 0.9952444444444445,
+        "balanced_accuracy": 0.9466666666666667,
+        "consistency_loss": 0.0,
+        "f1": 0.9483870967741935,
+        "fpr": 0.08666666666666667,
+        "loss": 0.19897611371500262,
+        "precision": 0.91875,
+        "recall": 0.98,
+        "subgroups": {
+          "authentic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.9133333333333333,
+              "auroc": null,
+              "balanced_accuracy": 0.45666666666666667,
+              "f1": 0.0,
+              "fpr": 0.08666666666666667,
+              "loss": NaN,
+              "precision": 0.0,
+              "recall": 0.0,
+              "threshold": 0.5
+            },
+            "negatives": 150,
+            "positives": 0
+          },
+          "minor_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "moderate_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "synthetic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.98,
+              "auroc": null,
+              "balanced_accuracy": 0.49,
+              "f1": 0.98989898989899,
+              "fpr": 0.0,
+              "loss": NaN,
+              "precision": 1.0,
+              "recall": 0.98,
+              "threshold": 0.5
+            },
+            "negatives": 0,
+            "positives": 150
+          },
+          "transformed": {
+            "count": 0,
+            "metrics": null
+          }
+        },
+        "threshold": 0.5
+      },
+      "validation": {
+        "accuracy": 0.9733333333333334,
+        "auroc": 0.9960666666666667,
+        "balanced_accuracy": 0.9733333333333334,
+        "consistency_loss": 0.0,
+        "f1": 0.9738562091503268,
+        "fpr": 0.04666666666666667,
+        "loss": 0.12304218334794541,
+        "precision": 0.9551282051282052,
+        "recall": 0.9933333333333333,
+        "subgroups": {
+          "authentic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.9533333333333334,
+              "auroc": null,
+              "balanced_accuracy": 0.4766666666666667,
+              "f1": 0.0,
+              "fpr": 0.04666666666666667,
+              "loss": NaN,
+              "precision": 0.0,
+              "recall": 0.0,
+              "threshold": 0.5
+            },
+            "negatives": 150,
+            "positives": 0
+          },
+          "minor_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "moderate_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "synthetic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.9933333333333333,
+              "auroc": null,
+              "balanced_accuracy": 0.49666666666666665,
+              "f1": 0.9966555183946488,
+              "fpr": 0.0,
+              "loss": NaN,
+              "precision": 1.0,
+              "recall": 0.9933333333333333,
+              "threshold": 0.5
+            },
+            "negatives": 0,
+            "positives": 150
+          },
+          "transformed": {
+            "count": 0,
+            "metrics": null
+          }
+        },
+        "threshold": 0.5
+      }
+    },
+    "original": {
+      "test": {
+        "accuracy": 0.9333333333333333,
+        "auroc": 0.9768444444444444,
+        "balanced_accuracy": 0.9333333333333333,
+        "consistency_loss": 0.0,
+        "f1": 0.9333333333333333,
+        "fpr": 0.06666666666666667,
+        "loss": 0.16818523192778229,
+        "precision": 0.9333333333333333,
+        "recall": 0.9333333333333333,
+        "subgroups": {
+          "authentic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.9333333333333333,
+              "auroc": null,
+              "balanced_accuracy": 0.4666666666666667,
+              "f1": 0.0,
+              "fpr": 0.06666666666666667,
+              "loss": NaN,
+              "precision": 0.0,
+              "recall": 0.0,
+              "threshold": 0.5
+            },
+            "negatives": 150,
+            "positives": 0
+          },
+          "minor_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "moderate_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "synthetic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.9333333333333333,
+              "auroc": null,
+              "balanced_accuracy": 0.4666666666666667,
+              "f1": 0.9655172413793104,
+              "fpr": 0.0,
+              "loss": NaN,
+              "precision": 1.0,
+              "recall": 0.9333333333333333,
+              "threshold": 0.5
+            },
+            "negatives": 0,
+            "positives": 150
+          },
+          "transformed": {
+            "count": 0,
+            "metrics": null
+          }
+        },
+        "threshold": 0.5
+      },
+      "validation": {
+        "accuracy": 0.9233333333333333,
+        "auroc": 0.9722666666666666,
+        "balanced_accuracy": 0.9233333333333333,
+        "consistency_loss": 0.0,
+        "f1": 0.9230769230769231,
+        "fpr": 0.07333333333333333,
+        "loss": 0.19138982789590955,
+        "precision": 0.9261744966442953,
+        "recall": 0.92,
+        "subgroups": {
+          "authentic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.9266666666666666,
+              "auroc": null,
+              "balanced_accuracy": 0.4633333333333333,
+              "f1": 0.0,
+              "fpr": 0.07333333333333333,
+              "loss": NaN,
+              "precision": 0.0,
+              "recall": 0.0,
+              "threshold": 0.5
+            },
+            "negatives": 150,
+            "positives": 0
+          },
+          "minor_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "moderate_edit": {
+            "count": 0,
+            "metrics": null
+          },
+          "synthetic": {
+            "count": 150,
+            "metrics": {
+              "accuracy": 0.92,
+              "auroc": null,
+              "balanced_accuracy": 0.46,
+              "f1": 0.9583333333333334,
+              "fpr": 0.0,
+              "loss": NaN,
+              "precision": 1.0,
+              "recall": 0.92,
+              "threshold": 0.5
+            },
+            "negatives": 0,
+            "positives": 150
+          },
+          "transformed": {
+            "count": 0,
+            "metrics": null
+          }
+        },
+        "threshold": 0.5
+      }
+    },
+    "test_delta": {
+      "accuracy": 0.013333333333333308,
+      "auroc": 0.018400000000000083,
+      "balanced_accuracy": 0.013333333333333308,
+      "f1": 0.01505376344086018,
+      "precision": -0.014583333333333393,
+      "recall": 0.046666666666666634
+    },
+    "threshold": 0.5,
+    "threshold_note": "The original and fine-tuned checkpoints are compared at the same fixed pre-training selection threshold; no test-set threshold fitting occurred."
+  },
+  "parameter_counts": {
+    "frozen": 739121216,
+    "total": 740371777,
+    "trainable": 1250561
+  },
+  "peft_type": "LORA",
+  "r": 32,
+  "seed": 42,
+  "selection_metric": "f1",
+  "target_module_names": [
+    "siglip.base_model.model.encoder.layers.0.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.0.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.1.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.1.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.2.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.2.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.3.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.3.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.4.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.4.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.5.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.5.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.6.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.6.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.7.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.7.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.8.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.8.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.9.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.9.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.10.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.10.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.11.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.11.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.12.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.12.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.13.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.13.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.14.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.14.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.15.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.15.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.16.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.16.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.17.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.17.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.18.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.18.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.19.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.19.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.20.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.20.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.21.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.21.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.22.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.22.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.23.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.23.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.24.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.24.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.25.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.25.self_attn.q_proj",
+    "siglip.base_model.model.encoder.layers.26.self_attn.v_proj",
+    "siglip.base_model.model.encoder.layers.26.self_attn.q_proj",
+    "dinov2.blocks.0.attn.qkv",
+    "dinov2.blocks.1.attn.qkv",
+    "dinov2.blocks.2.attn.qkv",
+    "dinov2.blocks.3.attn.qkv",
+    "dinov2.blocks.4.attn.qkv",
+    "dinov2.blocks.5.attn.qkv",
+    "dinov2.blocks.6.attn.qkv",
+    "dinov2.blocks.7.attn.qkv",
+    "dinov2.blocks.8.attn.qkv",
+    "dinov2.blocks.9.attn.qkv",
+    "dinov2.blocks.10.attn.qkv",
+    "dinov2.blocks.11.attn.qkv",
+    "dinov2.blocks.12.attn.qkv",
+    "dinov2.blocks.13.attn.qkv",
+    "dinov2.blocks.14.attn.qkv",
+    "dinov2.blocks.15.attn.qkv",
+    "dinov2.blocks.16.attn.qkv",
+    "dinov2.blocks.17.attn.qkv",
+    "dinov2.blocks.18.attn.qkv",
+    "dinov2.blocks.19.attn.qkv",
+    "dinov2.blocks.20.attn.qkv",
+    "dinov2.blocks.21.attn.qkv",
+    "dinov2.blocks.22.attn.qkv",
+    "dinov2.blocks.23.attn.qkv"
+  ],
+  "target_modules": [
+    "q_proj",
+    "qkv",
+    "v_proj"
+  ],
+  "test_metrics": {
+    "accuracy": 0.9466666666666667,
+    "auroc": 0.9952444444444445,
+    "balanced_accuracy": 0.9466666666666667,
+    "consistency_loss": 0.0,
+    "f1": 0.9483870967741935,
+    "fpr": 0.08666666666666667,
+    "loss": 0.19897611371500262,
+    "precision": 0.91875,
+    "recall": 0.98,
+    "subgroups": {
+      "authentic": {
+        "count": 150,
+        "metrics": {
+          "accuracy": 0.9133333333333333,
+          "auroc": null,
+          "balanced_accuracy": 0.45666666666666667,
+          "f1": 0.0,
+          "fpr": 0.08666666666666667,
+          "loss": NaN,
+          "precision": 0.0,
+          "recall": 0.0,
+          "threshold": 0.5
+        },
+        "negatives": 150,
+        "positives": 0
+      },
+      "minor_edit": {
+        "count": 0,
+        "metrics": null
+      },
+      "moderate_edit": {
+        "count": 0,
+        "metrics": null
+      },
+      "synthetic": {
+        "count": 150,
+        "metrics": {
+          "accuracy": 0.98,
+          "auroc": null,
+          "balanced_accuracy": 0.49,
+          "f1": 0.98989898989899,
+          "fpr": 0.0,
+          "loss": NaN,
+          "precision": 1.0,
+          "recall": 0.98,
+          "threshold": 0.5
+        },
+        "negatives": 0,
+        "positives": 150
+      },
+      "transformed": {
+        "count": 0,
+        "metrics": null
+      }
+    },
+    "threshold": 0.5
+  }
+}

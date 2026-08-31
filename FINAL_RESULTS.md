@@ -1,5 +1,10 @@
 # RobustLens — Final Results
 
+> **Scope.** This document reports the **SID_Set** evaluation at the frozen
+> threshold **0.69**. It predates the multi-generator work; for the blind-spot
+> finding and the benchmark results see [`RESULTS.md`](RESULTS.md).
+
+
 Every number here was produced in this repository and can be regenerated from
 the commands listed. Nothing is estimated.
 
@@ -260,7 +265,7 @@ forward pass per image plus the transformation passes only when enabled.
 
 | Check | Result |
 |---|---|
-| `pytest tests/ -q` | **487 passed**, 1 skipped, 337 subtests |
+| `pytest tests/ -q` | **509 passed**, 2 skipped, 350 subtests |
 | `ruff check src scripts tests app.py` | All checks passed |
 | `compileall src scripts app.py` | OK |
 | Streamlit startup | OK, no exceptions or errors |

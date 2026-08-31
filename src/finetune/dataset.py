@@ -36,6 +36,11 @@ DEFAULT_SUBGROUP_DIRECTORIES = {
     "transformed": "transformed",
 }
 _EDIT_SUFFIX = re.compile(r"(?:[_-](?:ai[_-]?)?edited|[_-](?:authentic|real)|[_-]v\d+)$", re.I)
+# Every directory name that denotes a class rather than one original's folder.
+# LABELS alone is not enough: the subgroup directories add "synthetic",
+# "moderate_edit" and "transformed", and treating one of those as a per-original
+# folder collapses an entire class into a single group.
+_CLASS_DIRECTORIES = frozenset(LABELS) | frozenset(DEFAULT_SUBGROUP_DIRECTORIES.values())
 _MASK_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 
 
@@ -107,7 +112,7 @@ def _group_id(path: Path, root: Path) -> str:
 
     relative = path.relative_to(root)
     parts = list(relative.parts)
-    if parts and parts[0] in LABELS:
+    if parts and parts[0] in _CLASS_DIRECTORIES:
         parts = parts[1:]
     # The preparation script puts one source image and all of its edits in
     # one folder, so a nested parent is the strongest grouping signal.

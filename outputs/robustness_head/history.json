@@ -1,0 +1,835 @@
+[
+  {
+    "epoch": 1,
+    "train": {
+      "accuracy": 0.963,
+      "auroc": 0.990565,
+      "balanced_accuracy": 0.963,
+      "consistency_loss": 0.0,
+      "f1": 0.9626262626262626,
+      "fpr": 0.027,
+      "loss": 0.11920223510750229,
+      "precision": 0.9724489795918367,
+      "recall": 0.953,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 0.973,
+            "auroc": null,
+            "balanced_accuracy": 0.4865,
+            "f1": 0.0,
+            "fpr": 0.027,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 0.953,
+            "auroc": null,
+            "balanced_accuracy": 0.4765,
+            "f1": 0.9759344598054276,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.953,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.97,
+      "auroc": 0.9960888888888889,
+      "balanced_accuracy": 0.97,
+      "consistency_loss": 0.0,
+      "f1": 0.9706840390879479,
+      "fpr": 0.05333333333333334,
+      "loss": 0.08791794239332376,
+      "precision": 0.9490445859872612,
+      "recall": 0.9933333333333333,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9466666666666667,
+            "auroc": null,
+            "balanced_accuracy": 0.47333333333333333,
+            "f1": 0.0,
+            "fpr": 0.05333333333333334,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9933333333333333,
+            "auroc": null,
+            "balanced_accuracy": 0.49666666666666665,
+            "f1": 0.9966555183946488,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.9933333333333333,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  {
+    "epoch": 2,
+    "train": {
+      "accuracy": 0.9995,
+      "auroc": 1.0,
+      "balanced_accuracy": 0.9995,
+      "consistency_loss": 0.0,
+      "f1": 0.9995002498750626,
+      "fpr": 0.001,
+      "loss": 0.0050410146746250415,
+      "precision": 0.999000999000999,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 0.999,
+            "auroc": null,
+            "balanced_accuracy": 0.4995,
+            "f1": 0.0,
+            "fpr": 0.001,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.9666666666666667,
+      "auroc": 0.9957333333333334,
+      "balanced_accuracy": 0.9666666666666667,
+      "consistency_loss": 0.0,
+      "f1": 0.9671052631578947,
+      "fpr": 0.04666666666666667,
+      "loss": 0.10033905734092059,
+      "precision": 0.9545454545454546,
+      "recall": 0.98,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9533333333333334,
+            "auroc": null,
+            "balanced_accuracy": 0.4766666666666667,
+            "f1": 0.0,
+            "fpr": 0.04666666666666667,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.98,
+            "auroc": null,
+            "balanced_accuracy": 0.49,
+            "f1": 0.98989898989899,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.98,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  {
+    "epoch": 3,
+    "train": {
+      "accuracy": 1.0,
+      "auroc": 1.0,
+      "balanced_accuracy": 1.0,
+      "consistency_loss": 0.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "loss": 0.001011275200963855,
+      "precision": 1.0,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 0.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.9733333333333334,
+      "auroc": 0.9960666666666667,
+      "balanced_accuracy": 0.9733333333333334,
+      "consistency_loss": 0.0,
+      "f1": 0.9738562091503268,
+      "fpr": 0.04666666666666667,
+      "loss": 0.12304218334794541,
+      "precision": 0.9551282051282052,
+      "recall": 0.9933333333333333,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9533333333333334,
+            "auroc": null,
+            "balanced_accuracy": 0.4766666666666667,
+            "f1": 0.0,
+            "fpr": 0.04666666666666667,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9933333333333333,
+            "auroc": null,
+            "balanced_accuracy": 0.49666666666666665,
+            "f1": 0.9966555183946488,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.9933333333333333,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  {
+    "epoch": 4,
+    "train": {
+      "accuracy": 1.0,
+      "auroc": 1.0,
+      "balanced_accuracy": 1.0,
+      "consistency_loss": 0.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "loss": 0.00029256213414671024,
+      "precision": 1.0,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 0.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.9666666666666667,
+      "auroc": 0.9961555555555556,
+      "balanced_accuracy": 0.9666666666666667,
+      "consistency_loss": 0.0,
+      "f1": 0.9671052631578947,
+      "fpr": 0.04666666666666667,
+      "loss": 0.10997805198756509,
+      "precision": 0.9545454545454546,
+      "recall": 0.98,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9533333333333334,
+            "auroc": null,
+            "balanced_accuracy": 0.4766666666666667,
+            "f1": 0.0,
+            "fpr": 0.04666666666666667,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.98,
+            "auroc": null,
+            "balanced_accuracy": 0.49,
+            "f1": 0.98989898989899,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.98,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  {
+    "epoch": 5,
+    "train": {
+      "accuracy": 1.0,
+      "auroc": 1.0,
+      "balanced_accuracy": 1.0,
+      "consistency_loss": 0.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "loss": 9.303850538344705e-05,
+      "precision": 1.0,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 0.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.9666666666666667,
+      "auroc": 0.9958666666666667,
+      "balanced_accuracy": 0.9666666666666667,
+      "consistency_loss": 0.0,
+      "f1": 0.9671052631578947,
+      "fpr": 0.04666666666666667,
+      "loss": 0.11988052550004084,
+      "precision": 0.9545454545454546,
+      "recall": 0.98,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9533333333333334,
+            "auroc": null,
+            "balanced_accuracy": 0.4766666666666667,
+            "f1": 0.0,
+            "fpr": 0.04666666666666667,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.98,
+            "auroc": null,
+            "balanced_accuracy": 0.49,
+            "f1": 0.98989898989899,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.98,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  {
+    "epoch": 6,
+    "train": {
+      "accuracy": 1.0,
+      "auroc": 1.0,
+      "balanced_accuracy": 1.0,
+      "consistency_loss": 0.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "loss": 7.301347248011596e-05,
+      "precision": 1.0,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 0.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.9666666666666667,
+      "auroc": 0.9955777777777778,
+      "balanced_accuracy": 0.9666666666666667,
+      "consistency_loss": 0.0,
+      "f1": 0.9671052631578947,
+      "fpr": 0.04666666666666667,
+      "loss": 0.1254012621800907,
+      "precision": 0.9545454545454546,
+      "recall": 0.98,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9533333333333334,
+            "auroc": null,
+            "balanced_accuracy": 0.4766666666666667,
+            "f1": 0.0,
+            "fpr": 0.04666666666666667,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.98,
+            "auroc": null,
+            "balanced_accuracy": 0.49,
+            "f1": 0.98989898989899,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.98,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  },
+  {
+    "epoch": 7,
+    "train": {
+      "accuracy": 1.0,
+      "auroc": 1.0,
+      "balanced_accuracy": 1.0,
+      "consistency_loss": 0.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "loss": 3.579815052395884e-05,
+      "precision": 1.0,
+      "recall": 1.0,
+      "subgroups": {
+        "authentic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 0.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 1000,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 1000,
+          "metrics": {
+            "accuracy": 1.0,
+            "auroc": null,
+            "balanced_accuracy": 0.5,
+            "f1": 1.0,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 1.0,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 1000
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    },
+    "validation": {
+      "accuracy": 0.9666666666666667,
+      "auroc": 0.9956666666666667,
+      "balanced_accuracy": 0.9666666666666667,
+      "consistency_loss": 0.0,
+      "f1": 0.9671052631578947,
+      "fpr": 0.04666666666666667,
+      "loss": 0.12687940984154125,
+      "precision": 0.9545454545454546,
+      "recall": 0.98,
+      "subgroups": {
+        "authentic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.9533333333333334,
+            "auroc": null,
+            "balanced_accuracy": 0.4766666666666667,
+            "f1": 0.0,
+            "fpr": 0.04666666666666667,
+            "loss": NaN,
+            "precision": 0.0,
+            "recall": 0.0,
+            "threshold": 0.5
+          },
+          "negatives": 150,
+          "positives": 0
+        },
+        "minor_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "moderate_edit": {
+          "count": 0,
+          "metrics": null
+        },
+        "synthetic": {
+          "count": 150,
+          "metrics": {
+            "accuracy": 0.98,
+            "auroc": null,
+            "balanced_accuracy": 0.49,
+            "f1": 0.98989898989899,
+            "fpr": 0.0,
+            "loss": NaN,
+            "precision": 1.0,
+            "recall": 0.98,
+            "threshold": 0.5
+          },
+          "negatives": 0,
+          "positives": 150
+        },
+        "transformed": {
+          "count": 0,
+          "metrics": null
+        }
+      },
+      "threshold": 0.5
+    }
+  }
+]

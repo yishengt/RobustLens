@@ -9,6 +9,21 @@ The validated path loads an existing trained checkpoint. Local-edit fine-tuning
 was implemented and **run at smoke scale**, then **rejected on measurement** —
 see below.
 
+### Start here
+
+| Document | Read it for |
+|---|---|
+| **[`OVERVIEW.md`](OVERVIEW.md)** | What this project does, in two minutes |
+| **[`RESULTS.md`](RESULTS.md)** | Every table, with sample sizes and intervals |
+| **[`PITCH_SCRIPT.md`](PITCH_SCRIPT.md)** | Demo and pitch narration |
+
+> **Scope note.** Everything below documents the original SID_Set evaluation and
+> the local-edit fine-tune that was rejected on measurement. A later line of work
+> — a multi-generator dataset, a generator-family blind spot in the base
+> checkpoint, and a head trained to close it — is reported in `OVERVIEW.md` and
+> `RESULTS.md`. The two do not conflict: they are different datasets, thresholds
+> and questions. Numbers on this page apply to SID_Set at threshold 0.69.
+
 ### Submission documents
 
 | Document | Contents |
@@ -56,8 +71,8 @@ performed** and threshold 0.69 stands unchanged.
 
 The non-training closeout is reproducible and currently reports:
 
-- **470 tests passed, 337 subtests passed, 1 platform-dependent JPEG test
-  skipped**; Ruff, compilation, and import checks pass.
+- **509 tests passed, 350 subtests passed, 2 skipped**; Ruff, compilation and
+  import checks pass across the whole tree.
 - The simple prediction JSON remains exactly `{image_path, pred}`. Timestamps
   and diagnostic fields appear only in the separate detailed output.
 - The data-quality audit inspected 25,337 local-edit files and found six
@@ -99,7 +114,7 @@ The non-training closeout is reproducible and currently reports:
 
 # Repository validation
 ./.venv/bin/python -m pytest -q
-./.venv/bin/ruff check src scripts app.py tests
+./.venv/bin/python -m ruff check .
 ./.venv/bin/python -m compileall -q src scripts app.py tests
 
 # Live demo
@@ -451,7 +466,7 @@ manifest. For a smaller balanced sample:
 
 ```bash
 ./.venv/bin/python -m pytest tests/ -q
-./.venv/bin/python -m ruff check src scripts app.py tests
+./.venv/bin/python -m ruff check .
 ```
 
 ---
@@ -1503,7 +1518,7 @@ distribution or checkpoint changes.
 
 ```bash
 ./.venv/bin/python -m pytest tests/ -q
-./.venv/bin/python -m ruff check src scripts app.py tests
+./.venv/bin/python -m ruff check .
 ```
 
 195 tests cover validation (valid, invalid, corrupted, truncated, RGB
@@ -1556,7 +1571,6 @@ neither a checkpoint nor the torch stack.
 │   ├── utils/{device,config}.py
 │   ├── data/                       # legacy albumentations helpers
 │   ├── models/classifier.py        # legacy model builder
-│   └── explainability/gradcam.py   # legacy standalone Grad-CAM CLI
 └── tests/
 ```
 

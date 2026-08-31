@@ -1,0 +1,70 @@
+{
+  "data": {
+    "extensions": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp"
+    ],
+    "include_conflicting_labels": false,
+    "masks_dir": "masks",
+    "num_workers": 0,
+    "quarantine_path": "outputs/data_quality/quarantine.json",
+    "strict_images": false,
+    "synthetic_mixture_dir": null,
+    "synthetic_mixture_fraction": 0.0,
+    "test_dir": "data/local_edits_aug_small/test",
+    "train_dir": "data/local_edits_aug_small/train",
+    "validation_dir": "data/local_edits_aug_small/validation"
+  },
+  "evaluation": {
+    "old_threshold": 0.69,
+    "recalibrate_after_training": false
+  },
+  "lora": {
+    "alpha": 16,
+    "bias": "none",
+    "dropout": 0.05,
+    "rank": 8,
+    "train_classifier": true
+  },
+  "model": {
+    "bombek": {
+      "classifier_dropout": 0.3,
+      "dinov2_model": "vit_large_patch14_dinov2.lvd142m",
+      "hidden_dim": 512,
+      "image_size": 392,
+      "lora_alpha": 64,
+      "lora_dropout": 0.1,
+      "lora_rank": 32,
+      "siglip_model": "google/siglip2-so400m-patch14-384"
+    },
+    "checkpoint": "models/pretrained/pytorch_model.pt",
+    "output_adapter": "models/adapters/robustness_head",
+    "parameter_limit": 2000000000
+  },
+  "outputs": {
+    "directory": "outputs/robustness_head",
+    "feature_cache_dir": "outputs/robustness_head/feature_cache"
+  },
+  "training": {
+    "batch_size": 32,
+    "classifier_learning_rate": 0.0005,
+    "consistency": {
+      "enabled": false,
+      "method": "mse",
+      "same_label_pairs_only": true,
+      "weight": 0.5
+    },
+    "early_stopping_patience": 3,
+    "epochs": 8,
+    "gradient_accumulation_steps": 1,
+    "lora_learning_rate": 0.0001,
+    "mode": "head_only",
+    "official_transformations": [],
+    "seed": 42,
+    "selection_metric": "f1",
+    "selection_threshold": 0.5,
+    "weight_decay": 0.01
+  }
+}

@@ -163,11 +163,45 @@ class DocumentedPathsTest(unittest.TestCase):
         self.assertIn("scripts/setup.py --all", readme)
         self.assertIn("scripts/setup.py --check", readme)
 
+    def _git_ignores(self, relative_path: str) -> bool:
+        """Ask git itself whether it would ignore ``relative_path``."""
+
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", relative_path],
+            cwd=ROOT,
+            capture_output=True,
+        )
+        if result.returncode not in (0, 1):
+            self.skipTest("git is unavailable or this tree is not a repository")
+        return result.returncode == 0
+
     def test_large_artefacts_stay_git_ignored(self) -> None:
-        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        for pattern in ("*.pt", "data/sid_set/", "outputs/*.json"):
-            with self.subTest(pattern=pattern):
-                self.assertIn(pattern, gitignore)
+        """Large regenerable artefacts must not reach the repository."""
+
+        for path in (
+            "models/pretrained/pytorch_model.pt",
+            "data/sid_set/shard.parquet",
+            "outputs/predictions.json",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(self._git_ignores(path), path)
+
+    def test_source_directories_are_never_git_ignored(self) -> None:
+        """Regression: a bare ``data/`` pattern also matches ``src/data/``.
+
+        That silently dropped real source from the published repository, so a
+        fresh clone could not import it. Dataset patterns must stay anchored to
+        the repository root with a leading slash.
+        """
+
+        for path in (
+            "src/data/dataset.py",
+            "src/data/__init__.py",
+            "src/pipeline/pipeline.py",
+            "scripts/run_inference.py",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(self._git_ignores(path), path)
 
 
 if __name__ == "__main__":

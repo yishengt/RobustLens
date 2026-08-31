@@ -34,17 +34,6 @@ model:
   pretrained: true
   num_classes: 1
 
-# Frozen CLIP backbone used by src/features/clip_features.py.
-# These two strings are the reproducibility contract -- the weights are
-# downloaded on demand and cached outside the repo, never committed.
-clip:
-  model_name: ViT-L-14      # ViT-B-32 is ~4x faster; use it while debugging
-  pretrained: openai        # 2020 WIT scrape, predates diffusion imagery
-  normalize: true           # L2-normalize features before the probe
-  batch_size: 32
-  device: auto
-  cache_path: data/processed/clip_features.npz
-
 normalization:
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
@@ -261,17 +250,3 @@ inference:
   batch_size: 32
   threshold: 0.5               # binary decision threshold used for agreement
   device: auto                 # auto | cpu | cuda | mps
-
-# ---------------------------------------------------------------------------
-# Legacy block: consumed only by the older src/data/augmentations.py helpers
-# that predate src/pipeline/transformations.py. Kept so existing code keeps
-# working; the inference pipeline reads the `transformations` block above.
-# ---------------------------------------------------------------------------
-augmentations:
-  robustness:
-    jpeg_qualities: [90, 70, 50, 30]
-    blur_sigmas: [0.5, 1.0, 2.0]
-    resize_scales: [0.5, 0.25]
-    noise_sigmas: [0.02, 0.05, 0.10]
-    color_jitter_limit: 0.2
-    center_crop_fraction: 0.8

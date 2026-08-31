@@ -6,7 +6,7 @@ Scope: current working tree, existing checkpoint, non-training work only
 
 Checkpoint: Bombek1 SigLIP2+DINOv2, 740,371,777 parameters
 
-Repository validation: 470 tests passed, 337 subtests passed, 1 skipped
+Repository validation: 509 tests passed, 350 subtests passed, 2 skipped
 
 Status key:
 

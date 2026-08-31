@@ -1,0 +1,129 @@
+{
+  "configured_subgroups": {
+    "authentic": {
+      "directory": null,
+      "label": 0
+    },
+    "minor_edit": {
+      "directory": null,
+      "label": 1
+    },
+    "moderate_edit": {
+      "directory": null,
+      "label": 1
+    },
+    "synthetic": {
+      "directory": null,
+      "label": 1
+    },
+    "transformed": {
+      "directory": null,
+      "label": 1
+    }
+  },
+  "data_quality": {
+    "conflicting_labels_excluded": {
+      "test": 0,
+      "train": 0,
+      "validation": 0
+    },
+    "conflicting_labels_excluded_total": 0,
+    "include_conflicting_labels": false,
+    "quarantine": {
+      "path": "/Users/tohyisheng/Downloads/RobustLens-main 3/outputs/data_quality/quarantine.json",
+      "source": "manifest"
+    }
+  },
+  "group_limit": {
+    "configured": null,
+    "records_excluded": {
+      "test": 0,
+      "train": 0,
+      "validation": 0
+    },
+    "seed": 42
+  },
+  "synthetic_mixture": {
+    "available": 0,
+    "enabled": false,
+    "requested_fraction": 0.0,
+    "selected": 0,
+    "train_only": true
+  },
+  "test": {
+    "class_balance": {
+      "ai_edited_fraction": 0.5,
+      "authentic_fraction": 0.5,
+      "imbalance_ratio": 1.0
+    },
+    "class_counts": {
+      "ai_edited": 150,
+      "authentic": 150
+    },
+    "corrupted_images": 0,
+    "group_count": 300,
+    "missing_masks": 300,
+    "root": "/Users/tohyisheng/Downloads/RobustLens-main 3/data/local_edits_aug_small/test",
+    "split": "test",
+    "subgroup_counts": {
+      "authentic": 150,
+      "minor_edit": 0,
+      "moderate_edit": 0,
+      "synthetic": 150,
+      "transformed": 0
+    },
+    "total_images": 300,
+    "valid_images": 300
+  },
+  "train": {
+    "class_balance": {
+      "ai_edited_fraction": 0.5,
+      "authentic_fraction": 0.5,
+      "imbalance_ratio": 1.0
+    },
+    "class_counts": {
+      "ai_edited": 1000,
+      "authentic": 1000
+    },
+    "corrupted_images": 0,
+    "group_count": 2000,
+    "missing_masks": 2000,
+    "root": "/Users/tohyisheng/Downloads/RobustLens-main 3/data/local_edits_aug_small/train",
+    "split": "train",
+    "subgroup_counts": {
+      "authentic": 1000,
+      "minor_edit": 0,
+      "moderate_edit": 0,
+      "synthetic": 1000,
+      "transformed": 0
+    },
+    "total_images": 2000,
+    "valid_images": 2000
+  },
+  "validation": {
+    "class_balance": {
+      "ai_edited_fraction": 0.5,
+      "authentic_fraction": 0.5,
+      "imbalance_ratio": 1.0
+    },
+    "class_counts": {
+      "ai_edited": 150,
+      "authentic": 150
+    },
+    "corrupted_images": 0,
+    "group_count": 300,
+    "missing_masks": 300,
+    "root": "/Users/tohyisheng/Downloads/RobustLens-main 3/data/local_edits_aug_small/validation",
+    "split": "validation",
+    "subgroup_counts": {
+      "authentic": 150,
+      "minor_edit": 0,
+      "moderate_edit": 0,
+      "synthetic": 150,
+      "transformed": 0
+    },
+    "total_images": 300,
+    "valid_images": 300
+  },
+  "views_per_training_image": 1
+}

@@ -1,37 +1,38 @@
-# Core inference stack (required)
+# Every entry below is imported by code in this repository. Verified with:
+#   grep -rhoE "^\s*(import|from) [a-zA-Z_]+" src scripts app.py tests
+
+# --- Core inference stack -------------------------------------------------
 torch>=2.2
 torchvision>=0.17
-open_clip_torch>=2.24
-albumentations>=1.4
 Pillow>=10.0
 numpy>=1.24
 PyYAML>=6.0
+
+# The Bombek1 SigLIP2 + DINOv2 detector: SigLIP2 comes from transformers,
+# DINOv2 from timm, and the LoRA adapters are restored with peft.
 transformers>=4.45
-
-# Streamlit demo (app.py); pandas backs the charts and tables
-streamlit>=1.32
-pandas>=2.0
-matplotlib>=3.7
-
-# Optional: DCT features in src/pipeline/frequency.py.
-# The frequency module degrades gracefully without it.
-scipy>=1.10
-
-# Optional: dataset benchmarking via scripts/download_dataset.py and
-# scripts/evaluate_dataset.py. pyarrow reads the parquet shards.
-huggingface_hub>=0.23
-pyarrow>=14.0
-
-# Tests
-pytest>=8.0
-
-# Optional legacy helpers: only src/data/augmentations.py, src/inference/predict.py
-# and src/explainability/gradcam.py need these. The src/pipeline/* stack does not.
-# albumentations>=1.4
-# opencv-python-headless>=4.8
-
-# Required by model.py (LoRA adapters in the Bombek1 detector)
 peft>=0.11
 timm>=1.0
 safetensors>=0.4
+
+# --- Streamlit demo (app.py) ---------------------------------------------
+# altair backs the charts; pandas backs the tables.
+streamlit>=1.32
+altair>=5.0
+pandas>=2.0
+matplotlib>=3.7
+
+# --- Optional: DCT features in src/pipeline/frequency.py ------------------
+# The frequency module degrades gracefully without it.
+scipy>=1.10
+
+# --- Optional: dataset download and benchmarking --------------------------
+# scripts/download_dataset.py and scripts/extract_dataset.py.
+# pyarrow reads the SID_Set parquet shards; datasets backs the finetune loader.
+huggingface_hub>=0.23
+pyarrow>=14.0
 datasets>=2.18
+
+# --- Development ----------------------------------------------------------
+pytest>=8.0
+ruff>=0.6

@@ -270,3 +270,61 @@ python3 scripts/setup.py --all      # venv, dependencies, checkpoint, dataset
 
 `scripts/setup.py --check` reports anything missing with the exact command to
 fix it.
+
+---
+
+## Update — generator-family blind spot and how we closed it
+
+The results above cover our SID_Set evaluation. A later line of work found
+something more specific about the base detector.
+
+**The finding.** On 646 held-out images, the checkpoint we build on is perfect on
+latent-diffusion and commercial generators and largely blind to pixel-space
+diffusion:
+
+| Generator | Family | n | Base recall |
+|---|---|---:|---:|
+| SD 2.1 / SDXL / SD 3 | Latent diffusion | 53 | 1.000 |
+| Midjourney | Commercial | 15 | 1.000 |
+| GLIDE | Pixel-space diffusion | 92 | 0.739 |
+| **ADM** | **Pixel-space diffusion** | **95** | **0.305** |
+
+It misses seven of every ten ADM images. The cause is architectural: latent
+diffusion decodes through a VAE and leaves a signature the detector had learned
+to find; pixel-space models have no VAE and therefore no signature.
+
+**The fix.** A 1.25M-parameter head trained on a 4,979-image, six-generator,
+confound-normalised dataset:
+
+| Group | n | Base | Tuned | Δ |
+|---|---:|---:|---:|---:|
+| ADM recall | 95 | 0.305 | **0.863** | +0.558 |
+| GLIDE recall | 92 | 0.739 | **0.967** | +0.228 |
+| All pixel-space | 187 | 0.519 | **0.914** | **+0.396** |
+| Authentic false positives | 459 | 0.013 | 0.072 | +0.059 |
+
+That is +0.396 recall for +0.059 false positives — roughly seven to one.
+
+**What did not work, and we report it.** The same adapter does **not** improve the
+DALL·E-only reference benchmarks. On the `normalized` config AUROC fell 0.011 and
+improved in only 3 of 14 conditions; on `laion_matched`, recall appeared to rise
+in all 14 conditions but at matched false-positive rate the base model won 13 of
+14, showing the gain was a threshold shift rather than better separation. Both
+benchmarks contain no pixel-space diffusion, and the base model already scores
+recall 1.000 on DALL·E 3 — there is no blind spot there to fix. We therefore ship
+the base checkpoint and publish the adapter as a documented negative result.
+
+**What transfers is abstention.** Withdrawing unstable verdicts works on
+benchmarks we did not build:
+
+| Test set | Abstains | Accuracy | Among answered | Error enrichment |
+|---|---:|---:|---:|---:|
+| Reference benchmark | 45.5% | 0.985 | **1.000** | 2.20× |
+| `laion_matched` | 38.9% | 0.975 | **1.000** | 2.57× |
+
+Every error the system makes is one it already declined to answer. The cost is a
+high abstention rate: this is a triage tool that answers about half of what it
+sees, not a system that decides on everything.
+
+Full tables, sample sizes and confidence intervals: [`RESULTS.md`](RESULTS.md).
+A two-minute summary: [`OVERVIEW.md`](OVERVIEW.md).

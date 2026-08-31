@@ -28,22 +28,22 @@ outputs/*.json
 outputs/*.csv
 outputs/*.png
 
-# Downloaded datasets (SID_Set shards are ~495 MB each)
-data/
-data/sid_set/
+# Downloaded datasets (SID_Set shards are ~495 MB each).
+# Anchored with a leading slash: a bare `data/` also matches src/data/,
+# which is source code and must stay tracked.
+/data/
 *.parquet
 
 # Images unpacked from dataset shards by scripts/extract_dataset.py.
 # Regenerable from the parquet files; ~2 GB, thousands of files.
-data/
 .cache/
 .huggingface/
 
 # Datasets: never committed. Fetched per the README setup steps.
-data/raw/**
-!data/raw/**/.gitkeep
-data/processed/**
-!data/processed/**/.gitkeep
+/data/raw/**
+!/data/raw/**/.gitkeep
+/data/processed/**
+!/data/processed/**/.gitkeep
 
 # Model weights and cached features.
 # CLIP weights are downloaded on demand by open_clip and cached outside the
@@ -75,3 +75,8 @@ data/processed/**
 
 # macOS
 .DS_Store
+
+# Run logs and evaluation artefacts produced by the robustness workflow.
+# Regenerable from the scripts; the JSON reports are what get published.
+outputs/*.log
+outputs/**/*.log
