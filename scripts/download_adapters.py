@@ -38,6 +38,10 @@ ADAPTER_FILES = (
 )
 
 ADAPTERS = {
+    "robustness_head": (
+        "Head-only, 6 generators. ADM recall 0.305 -> 0.863, pixel-space 0.519 -> 0.914. "
+        "NOT ADOPTED as the default: no gain on the DALL-E benchmarks"
+    ),
     "local_edit_smoke": "Head-only local-edit fine-tune. REJECTED: AUROC 0.510 -> 0.354",
     "consistency_classification_only": "Ablation baseline, BCE loss only",
     "consistency_consistency_mse": "+ logit-MSE consistency loss. REJECTED: no gain",
