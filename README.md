@@ -8,6 +8,30 @@ python3 scripts/setup.py                     # venv, deps, model checkpoint
 ./.venv/bin/streamlit run app.py             # demo
 ```
 
+> ### Compliance
+>
+> **Model size: 740,371,777 parameters — 37% of the competition's 2,000,000,000
+> limit.** Measured against the shipped checkpoint, not quoted from documentation:
+>
+> ```bash
+> ./.venv/bin/python scripts/count_params.py --checkpoint models/pretrained/pytorch_model.pt
+> ```
+>
+> | Component | Parameters | Share |
+> |---|---:|---:|
+> | SigLIP2 vision tower (frozen) | 432,206,912 | 58.4% |
+> | DINOv2 (frozen) | 306,914,304 | 41.5% |
+> | Classification head (trained here) | 1,250,561 | 0.2% |
+> | **Total** | **740,371,777** | **PASS — well under 2B** |
+>
+> **We did not train on the held-out evaluation data.** DALL·E images were removed
+> from our training set entirely — the Defactify source ships five generators and we
+> excluded its DALL·E 3 class, so the competition's DALL·E benchmark stays a genuine
+> unseen-generator test rather than a memory test. Our COCO images come from
+> `train2017`, not the banned `val2017` split: verified by caption matching against
+> the public annotations, where 997 of 997 real captions matched train2017 and none
+> matched val2017 exclusively.
+
 ---
 
 ## Why we built it
@@ -46,7 +70,7 @@ transformation chains RobustLens can **abstain**, returning `Uncertain` rather t
 forcing a potentially misleading classification. Abstention only withdraws a claim;
 it never reverses the predicted class.
 
-Optional patch analysis produces a heatmap of which regions influenced the score. It
+Patch analysis produces a heatmap of which regions influenced the score. It
 is explainability only — not proof of AI editing, not a segmentation mask, and it
 carries zero weight in the probability.
 
@@ -81,11 +105,7 @@ idempotent. On Apple Silicon add `--device mps` — about 8.9× faster than CPU.
 ```
 
 Add `--detailed-output report.json` for labels, per-transformation scores, confidence
-and abstention reasoning. Verify the parameter limit:
-
-```bash
-./.venv/bin/python scripts/count_params.py --checkpoint models/pretrained/pytorch_model.pt
-```
+and abstention reasoning.
 
 **Built with:** Python, PyTorch, Hugging Face Transformers, timm, PEFT/LoRA, Pillow,
 NumPy, SciPy, pyarrow, pandas, Altair, Streamlit, pytest, Ruff. Runs on CPU and Apple
@@ -161,8 +181,6 @@ conditions at matched false-positive rate. We treat this as evidence of **condit
 specialisation**, not proof that fine-tuning solved generalisation, and we keep the
 original checkpoint as the default.
 
-Full tables with sample sizes and confidence intervals: **[`RESULTS.md`](RESULTS.md)**.
-
 ---
 
 ## Reproduce
@@ -218,9 +236,6 @@ provenance evidence; and more realistic chained redistribution pipelines.
 | Document | Read it for |
 |---|---|
 | **[`OVERVIEW.md`](OVERVIEW.md)** | The project in two minutes |
-| **[`RESULTS.md`](RESULTS.md)** | Every table, with sample sizes and intervals |
-| [`DEVPOST.md`](DEVPOST.md) | Submission write-up |
-| [`PITCH_SCRIPT.md`](PITCH_SCRIPT.md) | Demo and pitch narration |
 | [`AUDIT.md`](AUDIT.md) | Independent implementation audit |
 | [`docs/reference.md`](docs/reference.md) | Full technical reference — pipeline internals, evaluation protocol, every ablation |
 
@@ -228,9 +243,6 @@ provenance evidence; and more realistic chained redistribution pipelines.
 > the earlier SID_Set evaluation at threshold 0.69. They do not conflict with the
 > results above — a different dataset answering a different question.
 
-## Team
-
-<!-- Add contributions here before submitting. -->
 
 ## Licence and attribution
 
