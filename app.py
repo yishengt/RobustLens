@@ -31,6 +31,10 @@ DEFAULT_CONFIG = "configs/config.yaml"
 # Defaults to the path scripts/setup.py downloads to, so the app works with no
 # manual step. checkpoints/best.pt is still accepted if you keep one there.
 DEFAULT_CHECKPOINT = "models/pretrained/pytorch_model.pt"
+# Optional head-only adapter. Not adopted as the shipped default: it improves
+# pixel-space diffusion (ADM recall 0.305 -> 0.863) and does not improve the
+# DALL-E benchmarks, so the base checkpoint stays the default and this is opt-in.
+DEFAULT_ADAPTER = "models/adapters/robustness_head"
 
 STYLE = """
 <style>
@@ -50,13 +54,24 @@ STYLE = """
 
 
 @st.cache_resource(show_spinner="Loading model…")
-def load_pipeline(config_path: str, checkpoint_path: str, device: str) -> DetectionPipeline:
-    """Load the config and checkpoint once and reuse them across reruns."""
+def load_pipeline(
+    config_path: str, checkpoint_path: str, device: str, adapter_dir: str = ""
+) -> DetectionPipeline:
+    """Load the config and checkpoint once and reuse them across reruns.
+
+    ``adapter_dir`` is part of the cache key, so switching the adapter on or off
+    rebuilds the pipeline rather than silently reusing the previous weights.
+    """
 
     config = load_config(config_path)
-    return DetectionPipeline.from_checkpoint(
+    pipeline = DetectionPipeline.from_checkpoint(
         checkpoint_path, config, device=None if device == "auto" else device
     )
+    if adapter_dir:
+        from src.finetune.model import load_saved_adapter_into_model
+
+        load_saved_adapter_into_model(pipeline.bundle.model, adapter_dir)
+    return pipeline
 
 
 def _verdict_colour(label: str) -> str:
@@ -329,16 +344,39 @@ def main() -> None:
     with st.sidebar:
         st.markdown("### Settings")
         device_choice = st.selectbox("Device", ["auto", "cpu", "cuda", "mps"], index=0)
+        adapter_on = st.toggle(
+            "Pixel-space adapter",
+            value=False,
+            help=(
+                "Applies the head-only adapter trained on six generators. Raises ADM "
+                "recall from 0.305 to 0.863 and GLIDE from 0.739 to 0.967, at the cost "
+                "of more false positives (0.013 to 0.072). It does not improve DALL-E "
+                "detection, so the base checkpoint is the default."
+            ),
+        )
         with st.expander("Advanced"):
             config_path = st.text_input("Config", DEFAULT_CONFIG)
             checkpoint_input = st.text_input("Checkpoint", DEFAULT_CHECKPOINT)
+            adapter_input = st.text_input("Adapter directory", DEFAULT_ADAPTER)
 
     try:
         config = load_config(config_path)
         checkpoint_path = resolve_config_path(config, checkpoint_input)
+        adapter_path = ""
+        if adapter_on:
+            resolved = Path(resolve_config_path(config, adapter_input))
+            if not resolved.is_dir():
+                st.error(f"Adapter directory not found: {resolved}")
+                st.stop()
+            adapter_path = str(resolved)
         pipeline = load_pipeline(
-            str(Path(config_path).expanduser().resolve()), str(checkpoint_path), device_choice
+            str(Path(config_path).expanduser().resolve()),
+            str(checkpoint_path),
+            device_choice,
+            adapter_path,
         )
+        if adapter_path:
+            st.sidebar.caption("Adapter active — pixel-space diffusion")
     except (FileNotFoundError, ValueError) as exc:
         st.error(f"Configuration error: {exc}")
         st.stop()
