@@ -4,9 +4,34 @@
 weights are git-ignored (`*.safetensors`, `*.pt`) because they are large binaries
 that do not belong in version control.
 
-## You almost certainly do not need these
+## What is here
 
-Every adapter published here comes from an experiment that was **rejected on
+**`robustness_head` is the one adapter that measurably works.** On 646 held-out
+images it takes ADM recall from 0.305 to 0.863 and pixel-space detection overall
+from 0.519 to 0.914, for 0.059 of false-positive cost on 459 authentic images --
+roughly seven points of recall per point of precision.
+
+It is still **not the default**, because the improvement is conditional. On the
+DALL-E-only benchmarks it gives nothing: AUROC -0.011 on one, and on the other the
+base model wins 13 of 14 conditions once the false-positive rate is matched. Neither
+benchmark contains pixel-space diffusion and the base model already scores recall
+1.000 on DALL-E 3, so there is no blind spot there to fix.
+
+Enable it explicitly:
+
+```bash
+python scripts/run_inference.py --input-dir IMAGES \
+    --adapter-dir models/adapters/robustness_head
+```
+
+or with the "Pixel-space adapter" toggle in the Streamlit demo.
+
+Licence: trained on GenImage (CC-BY-NC-SA-4.0), so the adapter inherits
+**CC-BY-NC-SA-4.0 -- non-commercial, research use only**.
+
+## The rest were rejected on measurement
+
+Every other adapter published here comes from an experiment that was **rejected on
 measurement**. The production RobustLens pipeline uses the **unmodified base
 checkpoint** and references no adapter anywhere — not in `configs/config.yaml`,
 not in `app.py`, not in `scripts/run_inference.py`.
