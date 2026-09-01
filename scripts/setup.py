@@ -6,6 +6,7 @@
     python3 scripts/setup.py             # the same, confirming the download first
     python3 scripts/setup.py --all --yes # also the evaluation dataset
     python3 scripts/setup.py --sample    # only the smoke-test images
+    python3 scripts/setup.py --adapter   # only the pixel-space adapter
 
 Runs on the system Python: it creates the virtualenv, so it cannot assume one
 exists. Every step is idempotent and safe to re-run -- a half-finished
@@ -15,6 +16,7 @@ checkpoint download resumes rather than restarting.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import ssl
@@ -29,10 +31,22 @@ VENV_PYTHON = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 SAMPLE_DIR = PROJECT_ROOT / "data/smoke_sample"
 CHECKPOINT = PROJECT_ROOT / "models/pretrained/pytorch_model.pt"
+# Pinned to a commit, not to `main`. `resolve/main` follows the branch, so if
+# the publisher ever replaces the file every number this project reports would
+# silently come from different weights and stop being reproducible.
+CHECKPOINT_REVISION = "6455cf791436ee914c9556ab71578cce9761fef7"
 CHECKPOINT_URL = (
-    "https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt"
+    "https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/"
+    f"resolve/{CHECKPOINT_REVISION}/pytorch_model.pt"
 )
 CHECKPOINT_BYTES = 2_105_483_083
+# Upstream's LFS sha256 for that revision, checked after a fresh download.
+CHECKPOINT_SHA256 = "caae0c005d8e37e7aa086aa241d1c9445d296ef77649004655c14f5c81130d4b"
+
+# The demo's adapter toggle needs these files; without them the app can only
+# report "Adapter directory not found".
+ADAPTER_NAME = "robustness_head"
+ADAPTER_DIR = PROJECT_ROOT / "models/adapters" / ADAPTER_NAME
 
 DATASET_DIR = PROJECT_ROOT / "data/sid_set"
 CALIBRATION = PROJECT_ROOT / "outputs/calibration.json"
@@ -156,6 +170,61 @@ def checkpoint_status() -> tuple[bool, str]:
     return True, f"{human(size)}, size verified"
 
 
+def verify_checkpoint() -> bool:
+    """True when the file on disk is the exact revision this project pins."""
+
+    digest = hashlib.sha256()
+    try:
+        with CHECKPOINT.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError:
+        return False
+    return digest.hexdigest() == CHECKPOINT_SHA256
+
+
+def adapter_status() -> tuple[bool, str]:
+    weights = ADAPTER_DIR / "adapter_model.safetensors"
+    head = ADAPTER_DIR / "classifier_head.pt"
+    if not (weights.exists() and head.exists()):
+        return False, "not downloaded (33 MB; the demo's adapter toggle needs it)"
+    size = sum(item.stat().st_size for item in ADAPTER_DIR.iterdir() if item.is_file())
+    return True, f"{human(size)} in models/adapters/{ADAPTER_NAME}/"
+
+
+def download_adapter() -> bool:
+    """Fetch the pixel-space adapter so the demo's toggle works out of the box.
+
+    Optional on purpose: it is 33 MB of opt-in explainability, the base
+    checkpoint is what actually runs by default, and a network failure here
+    must not report the whole project as broken.
+
+    Shelled out to the venv interpreter because it needs huggingface_hub, and
+    this file must import nothing outside the standard library -- it runs on
+    the system Python before any dependency exists.
+    """
+
+    ok, detail = adapter_status()
+    if ok:
+        print(f"  adapter already present ({detail})")
+        return True
+    if not VENV_PYTHON.exists():
+        print(colour("  create the virtualenv first: python3 scripts/setup.py", RED))
+        return False
+    result = subprocess.run(
+        [
+            str(VENV_PYTHON),
+            str(PROJECT_ROOT / "scripts/download_adapters.py"),
+            "--adapter",
+            ADAPTER_NAME,
+        ]
+    )
+    if result.returncode != 0:
+        print(colour("  adapter download failed; the base checkpoint is unaffected", YELLOW))
+        return False
+    return True
+
+
 def sample_status() -> tuple[bool, str]:
     images = sorted(SAMPLE_DIR.glob("*.png")) if SAMPLE_DIR.exists() else []
     if not images:
@@ -216,6 +285,7 @@ CHECKS = [
     # as the fix, which reported every correct clone as incomplete and gave
     # advice that could not work. It is a smoke test, so it is optional.
     ("Smoke-test images", sample_status, False, "python3 scripts/setup.py --sample"),
+    ("Pixel-space adapter", adapter_status, False, "python3 scripts/setup.py --adapter"),
     ("Evaluation dataset", dataset_status, False, "python3 scripts/setup.py --dataset"),
     (
         "Calibration",
@@ -335,8 +405,21 @@ def download_checkpoint(assume_yes: bool) -> bool:
         return False
 
     ok, detail = checkpoint_status()
-    print(f"  {colour('checkpoint ready', GREEN) if ok else colour('checkpoint ' + detail, RED)}")
-    return ok
+    if not ok:
+        print(f"  {colour('checkpoint ' + detail, RED)}")
+        return False
+    # Only after a fresh download: hashing 2 GB costs seconds, and the size
+    # check in checkpoint_status covers the common truncated-download case.
+    # This catches the rest -- a corrupted resume, or a file that is the right
+    # length but not the weights this project's numbers were measured on.
+    print("  verifying checksum ...")
+    if not verify_checkpoint():
+        print(colour("  checksum MISMATCH: the file is not the pinned revision.", RED))
+        print("  Delete it and re-run to download again:")
+        print(f"    rm {CHECKPOINT}")
+        return False
+    print(f"  {colour('checkpoint ready', GREEN)} ({detail}, checksum verified)")
+    return True
 
 
 def download_dataset(assume_yes: bool, shards: int) -> bool:
@@ -377,6 +460,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--sample", action="store_true", help="Only generate the smoke-test images"
     )
+    parser.add_argument(
+        "--adapter", action="store_true", help="Only download the pixel-space adapter"
+    )
     parser.add_argument("--shards", type=int, default=4, help="Dataset shards to fetch")
     parser.add_argument("--yes", "-y", action="store_true", help="Do not prompt")
     parser.add_argument("--skip-checkpoint", action="store_true", help="Set up code only")
@@ -387,10 +473,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print("\nSetting up: Robust Detection of AI-Generated Images\n" + "=" * 66)
 
-    if args.checkpoint or args.dataset or args.sample:
+    if args.checkpoint or args.dataset or args.sample or args.adapter:
         if args.checkpoint and not download_checkpoint(args.yes):
             return 1
         if args.sample and not create_sample_images():
+            return 1
+        if args.adapter and not download_adapter():
             return 1
         if args.dataset:
             if not VENV_PYTHON.exists():
@@ -400,25 +488,29 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         return run_check()
 
-    print("\n[1/5] Virtualenv")
+    print("\n[1/6] Virtualenv")
     if not create_venv():
         return 1
 
-    print("\n[2/5] Dependencies")
+    print("\n[2/6] Dependencies")
     if not install_dependencies():
         print(colour("  dependency installation failed", RED))
         return 1
 
-    print("\n[3/5] Model checkpoint")
+    print("\n[3/6] Model checkpoint")
     if args.skip_checkpoint:
         print("  skipped (--skip-checkpoint)")
     else:
         download_checkpoint(args.yes)
 
-    print("\n[4/5] Smoke-test images")
+    print("\n[4/6] Smoke-test images")
     create_sample_images()
 
-    print("\n[5/5] Evaluation dataset")
+    # Optional, and never fatal: the demo runs on the base checkpoint alone.
+    print("\n[5/6] Pixel-space adapter")
+    download_adapter()
+
+    print("\n[6/6] Evaluation dataset")
     if args.all:
         download_dataset(args.yes, args.shards)
     else:
