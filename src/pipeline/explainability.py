@@ -82,11 +82,15 @@ def find_target_layer(model: nn.Module, architecture: str = "") -> Optional[nn.M
 class GradCAM:
     """Minimal Grad-CAM: weight activations by their mean gradient."""
 
-    def __init__(self, model: nn.Module, target_layer: nn.Module):
+    def __init__(self, model: nn.Module, target_layer: nn.Module, ai_class_index: int = 1):
         if target_layer is None:
             raise ExplainabilityUnavailable("No convolutional layer available for Grad-CAM.")
         self.model = model
         self.target_layer = target_layer
+        # Which output column is "AI-generated". Hardcoding 1 would explain the
+        # opposite class from the one being reported whenever a checkpoint puts
+        # AI in column 0, which model.ai_class_index exists to express.
+        self.ai_class_index = int(ai_class_index)
         self._activations: Optional[torch.Tensor] = None
         self._gradients: Optional[torch.Tensor] = None
         self._handles: List[Any] = []
@@ -127,9 +131,14 @@ class GradCAM:
                 inputs = tensor.clone().detach().requires_grad_(True)
                 outputs = self.model(inputs)
                 flat = outputs.reshape(outputs.shape[0], -1)
-                # Target the AI-generated logit: column 1 for a softmax pair,
-                # the single logit otherwise.
-                column = 1 if flat.shape[-1] > 1 else 0
+                # Target the AI-generated logit: the configured column for a
+                # softmax pair, the single logit otherwise.
+                column = self.ai_class_index if flat.shape[-1] > 1 else 0
+                if not 0 <= column < flat.shape[-1]:
+                    raise ExplainabilityUnavailable(
+                        f"model.ai_class_index={column} is outside the "
+                        f"{flat.shape[-1]} output columns."
+                    )
                 flat[0, column].backward()
 
             if self._activations is None or self._gradients is None:
@@ -311,7 +320,7 @@ def explain(
                 f"Model '{bundle.architecture}' exposes no convolutional layer, so "
                 f"Grad-CAM is not compatible with it. All other results are unaffected."
             )
-        with GradCAM(bundle.model, layer) as cam:
+        with GradCAM(bundle.model, layer, bundle.ai_class_index) as cam:
             heatmap = cam(tensor.to(bundle.device))
         overlay = overlay_heatmap(image, heatmap, float(settings.get("overlay_alpha", 0.45)))
         return ExplanationResult(

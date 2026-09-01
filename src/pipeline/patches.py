@@ -320,6 +320,31 @@ def build_heatmap(
     return np.clip(heatmap, 0.0, 1.0), covered
 
 
+def _no_boxes_reason(settings: Dict[str, Any], width: int, height: int) -> str:
+    """Explain which setting actually made the grid empty.
+
+    Two different limits produce no boxes, and naming the wrong one sends the
+    reader after the wrong knob: an image below ``min_patch_size`` is too small
+    to tile at all, whereas a fixed ``grid`` can starve a comfortably large
+    image by cutting it into cells that are individually too small.
+    """
+
+    minimum = settings["min_patch_size"]
+    grid = settings.get("grid")
+    if grid:
+        cell_width, cell_height = width // int(grid), height // int(grid)
+        if min(cell_width, cell_height) < minimum and min(width, height) >= minimum:
+            return (
+                f"A {grid}x{grid} grid over a {width}x{height} image gives "
+                f"{cell_width}x{cell_height} regions, below the {minimum}px minimum "
+                f"patch size. Lower patches.grid or patches.min_patch_size to tile "
+                f"this image."
+            )
+    return (
+        f"Image is {width}x{height}, smaller than the {minimum}px minimum patch size."
+    )
+
+
 def _evidence_value(scores: np.ndarray, statistic: str, top_k: int) -> float:
     """Reduce patch scores to the single number fusion consumes."""
 
@@ -341,8 +366,19 @@ def analyse_patches(
     config: Optional[Dict[str, Any]] = None,
     whole_image_probability: Optional[float] = None,
     calibrator: Optional[ProbabilityCalibrator] = None,
+    whole_image_raw_probability: Optional[float] = None,
 ) -> PatchReport:
     """Score patches and reconstruct a risk heatmap, under the configured mode.
+
+    ``whole_image_probability`` is the CALIBRATED whole-image score and is what
+    the mode gate and the agreement figure compare against, since every patch
+    score is calibrated before those are computed.
+    ``whole_image_raw_probability`` is the same measurement before calibration:
+    it is what the scorer may reuse in place of a forward pass, because the
+    values it returns are raw and are calibrated together further down. Passing
+    the calibrated score there would calibrate that one entry twice and mix it
+    with raw scores; when it is absent the reuse is skipped and the patch is
+    scored normally.
 
     Never raises: any failure is reported as an unavailable :class:`PatchReport`
     so the surrounding pipeline keeps its whole-image result.
@@ -373,9 +409,8 @@ def analyse_patches(
         return PatchReport(
             available=False,
             message=(
-                f"Image is {width}x{height}, smaller than the "
-                f"{settings['min_patch_size']}px minimum patch size, so patch-level "
-                f"analysis was skipped. The whole-image result is unaffected."
+                f"{_no_boxes_reason(settings, width, height)} Patch-level analysis was "
+                f"skipped; the whole-image result is unaffected."
             ),
             settings=settings,
             mode=mode,
@@ -401,7 +436,14 @@ def analyse_patches(
     batch_size = settings["batch_size"] or int(
         (config or {}).get("inference", {}).get("batch_size", 8)
     )
-    scorer = PatchScorer(bundle, preprocessor, rgb, int(batch_size), whole_image_probability)
+    # The scorer works in RAW model space, so it may only reuse a raw score.
+    # With no calibrator the two are the same measurement, so the reuse still
+    # applies; with one and no raw value supplied, reuse is skipped rather than
+    # feeding an already-calibrated number into the calibration below.
+    reusable = whole_image_raw_probability
+    if reusable is None and calibrator is None:
+        reusable = whole_image_probability
+    scorer = PatchScorer(bundle, preprocessor, rgb, int(batch_size), reusable)
 
     try:
         raw = scorer.score(boxes)

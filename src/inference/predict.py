@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from src.data.augmentations import build_eval_transform
 from src.data.dataset import DEFAULT_EXTENSIONS, list_image_files, read_image, validate_image
+from src.pipeline.prediction import probabilities_from_logits
 from src.utils.checkpoint import load_model_from_checkpoint
 from src.utils.config import get_device
 
@@ -36,6 +37,19 @@ class ImageInferenceDataset(Dataset[Tuple[torch.Tensor, str]]):
         return tensor, str(path)
 
 
+def _ai_probabilities(logits: torch.Tensor) -> np.ndarray:
+    """Turn model outputs into AI-generated probabilities.
+
+    Both head styles are supported elsewhere in the project -- a single logit
+    read through a sigmoid, and a two-column softmax pair -- so this cannot
+    assume a sigmoid. Applying one to a softmax pair silently produces numbers
+    that are not probabilities of anything.
+    """
+
+    columns = 1 if logits.dim() == 1 else int(logits.shape[-1])
+    return probabilities_from_logits(logits, num_classes=columns)
+
+
 @torch.no_grad()
 def predict_pil_image(
     image: Image.Image, model: torch.nn.Module, transform: Any, device: str
@@ -46,7 +60,7 @@ def predict_pil_image(
         raise ValueError("An image is required for inference")
     array = np.asarray(image.convert("RGB"))
     tensor = transform(image=array)["image"].unsqueeze(0).to(device)
-    return float(torch.sigmoid(model(tensor).reshape(-1))[0].item())
+    return float(_ai_probabilities(model(tensor))[0])
 
 
 def load_detector(config: Dict[str, Any], checkpoint_path: str | Path):
@@ -114,7 +128,7 @@ def predict_directory(
     # -----------------------------------------------------------------------
     results: List[Dict[str, Any]] = []
     for images, paths in loader:
-        probabilities = torch.sigmoid(model(images.to(device)).reshape(-1)).cpu().tolist()
+        probabilities = _ai_probabilities(model(images.to(device))).tolist()
         results.extend(
             {"image_path": path, "pred": float(probability)}
             for path, probability in zip(paths, probabilities)

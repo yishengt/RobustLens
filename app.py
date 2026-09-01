@@ -254,6 +254,39 @@ def render_robustness(result: PipelineResult) -> None:
     )
 
 
+def _weight_of(container: Any, key: str) -> float:
+    """Read one fusion/confidence weight, treating an absent term as zero."""
+
+    weights = getattr(container, "weights", None) or {}
+    try:
+        return float(weights.get(key, 0.0))
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return 0.0
+
+
+def _patch_weight_caption(result: PipelineResult) -> str:
+    """Say what region evidence actually contributed to this result."""
+
+    probability_weight = _weight_of(getattr(result, "fusion", None), "patch")
+    confidence_weight = _weight_of(getattr(result, "confidence", None), "patch_agreement")
+
+    if probability_weight <= 0 and confidence_weight <= 0:
+        return (
+            "Region evidence carried zero weight in both the reported probability "
+            "and the confidence score — it is shown to indicate where to look, and "
+            "did not move the result."
+        )
+    parts = []
+    if probability_weight > 0:
+        parts.append(f"{probability_weight:.0%} of the reported probability")
+    if confidence_weight > 0:
+        parts.append(f"{confidence_weight:.0%} of the confidence score")
+    return (
+        f"Region evidence contributed {' and '.join(parts)} for this image, so it "
+        f"did move the result. It still is not proof that any region was edited."
+    )
+
+
 def render_patches(result: PipelineResult) -> None:
     """Region heat map, with the caveats that keep it from being over-read."""
 
@@ -262,12 +295,12 @@ def render_patches(result: PipelineResult) -> None:
         return
 
     st.markdown("### Regions")
-    overlay = overlay_patch_heatmap(result.original_image, report)
-    if overlay is not None:
-        left, right = st.columns(2)
-        if result.original_image is not None:
+    if result.original_image is not None:
+        overlay = overlay_patch_heatmap(result.original_image, report)
+        if overlay is not None:
+            left, right = st.columns(2)
             left.image(result.original_image, use_container_width=True)
-        right.image(overlay, use_container_width=True)
+            right.image(overlay, use_container_width=True)
 
     columns = st.columns(3)
     columns[0].metric("Regions scored", len(report.patches))
@@ -286,11 +319,12 @@ def render_patches(result: PipelineResult) -> None:
         "score. It is not proof of AI editing, a segmentation mask, or a "
         "reconstruction of editing history."
     )
-    st.caption(
-        "Region evidence carries zero weight in both the reported probability and "
-        "the confidence score — it is shown to indicate where to look, and cannot "
-        "move the result."
-    )
+    # Read the weights this analysis actually used rather than asserting they
+    # are zero. They are zero under the shipped config, but both are
+    # configurable -- fusion.mode: whole_patch_transform gives region evidence
+    # 20% of the probability -- and a hardcoded claim would then be a false
+    # statement about the very number displayed above it.
+    st.caption(_patch_weight_caption(result))
 
     # Every scored region, not just the outlined ones. `patches.top_k` controls
     # how many boxes get drawn on the overlay -- outlining all of them would be

@@ -128,7 +128,16 @@ def abstention_settings(config: Optional[Dict[str, Any]] = None) -> Dict[str, An
 
     section = (config or {}).get("abstention", {}) or {}
     settings = dict(DEFAULTS)
-    settings.update({key: value for key, value in section.items() if key in DEFAULTS})
+    # These are fitted values, so a key that does not land has to be loud. A
+    # silently dropped `min_agreeement` would fall back to the permissive
+    # default and look exactly like a run where the fitted value was applied.
+    unknown_keys = [key for key in section if key not in DEFAULTS]
+    if unknown_keys:
+        raise ValueError(
+            f"Unknown abstention setting(s): {', '.join(sorted(unknown_keys))}. "
+            f"Valid settings: {', '.join(sorted(DEFAULTS))}."
+        )
+    settings.update(section)
 
     for key in (
         "borderline_margin",

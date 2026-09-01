@@ -53,11 +53,17 @@ class ProjectStructureTest(unittest.TestCase):
                 self.assertTrue((ROOT / relative_path).is_file(), relative_path)
 
     def test_training_modules_remain_absent(self) -> None:
-        """This project is inference-only; no training code should exist."""
+        """No from-scratch training pipeline should exist.
+
+        The detector ships as a checkpoint plus the optional head-only LoRA
+        adapter under src/finetune, so this guards the thing that would
+        actually invalidate the results -- a full training loop over the
+        backbone -- rather than every module that touches weights.
+        src/features is a frozen-CLIP feature extractor and is expected.
+        """
 
         for relative_path in [
             "src/training",
-            "src/features",
             "src/evaluation/train.py",
         ]:
             with self.subTest(path=relative_path):
