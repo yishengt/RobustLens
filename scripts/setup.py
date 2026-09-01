@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
 import subprocess
 import sys
 import urllib.request
@@ -39,6 +40,38 @@ GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", 
 
 def colour(text: str, code: str) -> str:
     return text if not sys.stdout.isatty() else f"{code}{text}{RESET}"
+
+
+def ssl_context() -> ssl.SSLContext:
+    """Return an SSL context with a CA bundle that actually resolves.
+
+    This script runs on the SYSTEM Python, which on macOS ships without a CA
+    bundle unless "Install Certificates.command" was ever run -- so the default
+    context fails every HTTPS request with CERTIFICATE_VERIFY_FAILED. The
+    virtualenv this script just built does have certifi, so borrow its bundle.
+    Falls back to the default context when the venv is not usable yet, which is
+    the correct behaviour on platforms where the default already works.
+    """
+
+    context = ssl.create_default_context()
+    if not VENV_PYTHON.exists():
+        return context
+    try:
+        result = subprocess.run(
+            [str(VENV_PYTHON), "-c", "import certifi; print(certifi.where())"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return context
+    cafile = result.stdout.strip()
+    if result.returncode == 0 and cafile and Path(cafile).is_file():
+        try:
+            return ssl.create_default_context(cafile=cafile)
+        except (OSError, ssl.SSLError):  # pragma: no cover - unreadable bundle
+            return context
+    return context
 
 
 def human(size: float) -> str:
@@ -215,7 +248,7 @@ def download_checkpoint(assume_yes: bool) -> bool:
         print(f"  downloading {human(CHECKPOINT_BYTES)} ...")
 
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, context=ssl_context()) as response:
             mode = "ab" if existing and response.status == 206 else "wb"
             if mode == "wb":
                 existing = 0

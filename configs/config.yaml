@@ -29,10 +29,15 @@ model:
   # A checkpoint whose tensors unambiguously identify an architecture (the
   # external Bombek1 detector does) overrides this name at load time.
   name: efficientnet_b0
-  # Must stay true: training from scratch on hackathon-scale data both
-  # underperforms and overfits hard to the training generator's fingerprint.
+  # TRAINING-TIME setting only. Must stay true there: training from scratch on
+  # hackathon-scale data both underperforms and overfits hard to the training
+  # generator's fingerprint. Inference ignores it -- checkpoints load strictly,
+  # so pretrained weights would be downloaded only to be overwritten, and
+  # loading a local checkpoint would need the network for nothing.
   pretrained: true
   num_classes: 1
+  # Hard ceiling enforced at load time; the task limit is 2 billion.
+  max_parameters: 2000000000
 
 # Frozen CLIP backbone used by src/features/clip_features.py.
 # These two strings are the reproducibility contract -- the weights are

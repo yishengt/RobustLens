@@ -329,12 +329,14 @@ def load_model(
             for key in ("siglip_name", "dinov2_name", "hidden_dim", "dropout"):
                 if key in payload:
                     dual_settings[key] = payload[key]
-        use_pretrained_backbones = bool(
-            dual_settings.get(
-                "pretrained",
-                model_config.get("pretrained", canonical == DUAL_BACKBONE_ARCHITECTURE),
-            )
-        )
+        # Same reasoning as the Bombek branch above, and it holds for every
+        # architecture: the load below is strict, so the checkpoint has to
+        # supply every parameter and anything downloaded here is overwritten
+        # without ever being used. Fetching it only makes loading a LOCAL
+        # checkpoint depend on the network, and fail without it.
+        # `model.pretrained` in the config is a training-time setting and is
+        # deliberately not consulted here.
+        use_pretrained_backbones = False
     try:
         model = build_architecture(
             architecture,

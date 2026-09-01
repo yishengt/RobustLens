@@ -422,6 +422,7 @@ class DetectionPipeline:
             self.config,
             whole_image_probability=original_prediction.ai_probability,
             calibrator=self.calibrator,
+            whole_image_raw_probability=original_prediction.raw_probability,
         )
         if not patch_report.available and patch_report.settings.get("enabled", True):
             errors.append({"stage": "patches", "error": patch_report.message})

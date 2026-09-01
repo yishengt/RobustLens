@@ -53,11 +53,18 @@ def _settings(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
     range_reference = float(section.get("range_reference", DEFAULT_RANGE_REFERENCE))
     if std_reference <= 0 or range_reference <= 0:
         raise ValueError("consistency.std_reference and range_reference must be positive")
+    std_weight = float(section.get("std_weight", DEFAULT_STD_WEIGHT))
+    range_weight = float(section.get("range_weight", DEFAULT_RANGE_WEIGHT))
+    # Checking only that the pair sums above zero lets a negative weight
+    # through, which inverts that term: more spread would then read as more
+    # stability, the opposite of what the score means.
+    if std_weight < 0 or range_weight < 0:
+        raise ValueError("consistency.std_weight and range_weight must be non-negative")
     return {
         "std_reference": std_reference,
         "range_reference": range_reference,
-        "std_weight": float(section.get("std_weight", DEFAULT_STD_WEIGHT)),
-        "range_weight": float(section.get("range_weight", DEFAULT_RANGE_WEIGHT)),
+        "std_weight": std_weight,
+        "range_weight": range_weight,
     }
 
 
