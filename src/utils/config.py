@@ -7,7 +7,6 @@ from typing import Any, Dict
 
 import yaml
 
-
 ROOT_MARKERS = ("requirements.txt", "ruff.toml", "app.py", "configs")
 
 

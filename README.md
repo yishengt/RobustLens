@@ -4,9 +4,14 @@ Estimates the likelihood that an image is AI-generated — and reports whether t
 answer survives compression, blurring, rescaling, noise, colour shifts and cropping.
 
 ```bash
-python3 scripts/setup.py                     # venv, deps, model checkpoint
+python3 scripts/setup.py --yes               # venv, deps, 2.1 GB checkpoint
 ./.venv/bin/streamlit run app.py             # demo
 ```
+
+Setup takes a few minutes, mostly the checkpoint download, and is safe to re-run:
+every step is idempotent and an interrupted download resumes. Run
+`python3 scripts/setup.py --check` at any time for a per-item status report
+saying exactly what is present and what is missing.
 
 > ### Compliance
 >
@@ -185,19 +190,25 @@ original checkpoint as the default.
 
 ## Reproduce
 
-```bash
-./.venv/bin/python scripts/build_training_mix.py            # the dataset
-./.venv/bin/python scripts/build_augmented_train.py --views 3 --limit 2000
-./.venv/bin/python scripts/train_local_edit_lora.py \
-    --config configs/robustness_head.yaml --mode head_only --device mps
-./.venv/bin/python scripts/run_inference_chunked.py \
-    --input-dir IMAGES --detailed-output out.json --device mps
-./.venv/bin/python scripts/robustness_table.py --detailed out.json --labels labels.json
-./.venv/bin/python scripts/compare_robustness.py --baseline base.json --candidate tuned.json
-```
+Run the detector and the test suite:
 
 ```bash
-./.venv/bin/python -m pytest -q          # 509 passed, 2 skipped, 350 subtests
+./.venv/bin/python scripts/run_inference.py --input-dir IMAGES \
+    --detailed-output out.json --device mps
+./.venv/bin/python scripts/count_params.py --checkpoint models/pretrained/pytorch_model.pt
+```
+
+> **The fine-tuning pipeline is not on this branch.** `build_training_mix.py`,
+> `build_augmented_train.py`, `run_inference_chunked.py`, `robustness_table.py`,
+> `compare_robustness.py` and `configs/robustness_head.yaml` live on
+> `feat/robustness-finetune` and were never merged to `main`. The head-only
+> adapter they produce is published separately and is fetched with
+> `python scripts/download_adapters.py --adapter robustness_head`; the numbers
+> those scripts generated are recorded in `FINAL_RESULTS.md`. Check out that
+> branch to re-run the training itself.
+
+```bash
+./.venv/bin/python -m pytest -q          # 506 passed, 2 skipped, 340 subtests
 ./.venv/bin/python -m ruff check .
 ```
 

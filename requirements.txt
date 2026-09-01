@@ -22,8 +22,11 @@ scipy>=1.10
 huggingface_hub>=0.23
 pyarrow>=14.0
 
-# Tests
+# Tests and linting. ruff is listed because the README tells the reader to run
+# `ruff check .` and ships a ruff.toml configuring it; without it here that
+# documented command fails with "No module named ruff" on a fresh install.
 pytest>=8.0
+ruff>=0.4
 
 # Optional legacy helpers: only src/data/augmentations.py, src/inference/predict.py
 # and src/explainability/gradcam.py need these. The src/pipeline/* stack does not.

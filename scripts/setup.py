@@ -2,8 +2,10 @@
 """One-command setup, and a doctor that says exactly what is missing.
 
     python3 scripts/setup.py --check     # what do I have? what is missing?
-    python3 scripts/setup.py             # deps + checkpoint (prompts first)
-    python3 scripts/setup.py --all --yes # deps + checkpoint + dataset, no prompts
+    python3 scripts/setup.py --yes       # deps + checkpoint, no prompts
+    python3 scripts/setup.py             # the same, confirming the download first
+    python3 scripts/setup.py --all --yes # also the evaluation dataset
+    python3 scripts/setup.py --sample    # only the smoke-test images
 
 Runs on the system Python: it creates the virtualenv, so it cannot assume one
 exists. Every step is idempotent and safe to re-run -- a half-finished
@@ -25,6 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VENV = PROJECT_ROOT / ".venv"
 VENV_PYTHON = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
+SAMPLE_DIR = PROJECT_ROOT / "data/smoke_sample"
 CHECKPOINT = PROJECT_ROOT / "models/pretrained/pytorch_model.pt"
 CHECKPOINT_URL = (
     "https://huggingface.co/Bombek1/ai-image-detector-siglip-dinov2/resolve/main/pytorch_model.pt"
@@ -33,7 +36,6 @@ CHECKPOINT_BYTES = 2_105_483_083
 
 DATASET_DIR = PROJECT_ROOT / "data/sid_set"
 CALIBRATION = PROJECT_ROOT / "outputs/calibration.json"
-SAMPLE_IMAGE = PROJECT_ROOT / "data/cifake_sample/0000.jpg"
 
 GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
 
@@ -72,6 +74,29 @@ def ssl_context() -> ssl.SSLContext:
         except (OSError, ssl.SSLError):  # pragma: no cover - unreadable bundle
             return context
     return context
+
+
+def confirm(question: str, default: bool = True) -> bool:
+    """Ask a yes/no question, and survive a stdin that is not a terminal.
+
+    The checkpoint prompt defaults to YES: downloading it is the whole point of
+    running this script, so pressing Enter must not be the answer that leaves
+    the project unable to start. A piped or non-interactive stdin (CI, `| tee`,
+    a container build) takes the default rather than raising EOFError, which
+    used to abort setup outright.
+    """
+
+    hint = "[Y/n]" if default else "[y/N]"
+    if not sys.stdin or not sys.stdin.isatty():
+        print(f"{question} {hint} {'y' if default else 'n'}  (stdin is not a terminal)")
+        return default
+    try:
+        answer = input(f"{question} {hint} ").strip().lower()
+    except EOFError:
+        return default
+    if not answer:
+        return default
+    return answer in ("y", "yes")
 
 
 def human(size: float) -> str:
@@ -131,6 +156,38 @@ def checkpoint_status() -> tuple[bool, str]:
     return True, f"{human(size)}, size verified"
 
 
+def sample_status() -> tuple[bool, str]:
+    images = sorted(SAMPLE_DIR.glob("*.png")) if SAMPLE_DIR.exists() else []
+    if not images:
+        return False, "not generated (optional; only proves the pipeline runs)"
+    return True, f"{len(images)} generated image(s) in {SAMPLE_DIR.name}/"
+
+
+def create_sample_images() -> bool:
+    """Generate a couple of images so the CLI has something to run on.
+
+    These are GENERATED PATTERNS, not photographs and not AI-generated
+    pictures: they exist to prove the plumbing works end to end -- validation,
+    transformation, batching, JSON output -- on a machine with no dataset
+    downloaded. Any score they receive is meaningless as detection evidence,
+    which the written README beside them says too.
+    """
+
+    if not VENV_PYTHON.exists():
+        print(colour("  create the virtualenv first: python3 scripts/setup.py", RED))
+        return False
+    # Delegated to a separate script run by the VENV interpreter: generating
+    # the images needs numpy and Pillow, and this file must keep importing
+    # nothing outside the standard library because it runs before they exist.
+    result = subprocess.run(
+        [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts/make_smoke_images.py"), str(SAMPLE_DIR)]
+    )
+    if result.returncode != 0:
+        print(colour("  could not generate the smoke-test images", RED))
+        return False
+    return True
+
+
 def dataset_status() -> tuple[bool, str]:
     shards = sorted(DATASET_DIR.rglob("*.parquet")) if DATASET_DIR.exists() else []
     if not shards:
@@ -153,12 +210,12 @@ CHECKS = [
     ("Virtualenv", venv_status, True, "python3 scripts/setup.py"),
     ("Dependencies", dependency_status, True, "python3 scripts/setup.py"),
     ("Model checkpoint", checkpoint_status, True, "python3 scripts/setup.py --checkpoint"),
-    (
-        "Sample image",
-        lambda: (SAMPLE_IMAGE.exists(), "bundled" if SAMPLE_IMAGE.exists() else "missing"),
-        True,
-        "re-clone the repository",
-    ),
+    # Generated locally, never cloned: data/ is gitignored in full, so a
+    # bundled sample could not reach a fresh clone however the repository was
+    # obtained. It used to be listed as REQUIRED with "re-clone the repository"
+    # as the fix, which reported every correct clone as incomplete and gave
+    # advice that could not work. It is a smoke test, so it is optional.
+    ("Smoke-test images", sample_status, False, "python3 scripts/setup.py --sample"),
     ("Evaluation dataset", dataset_status, False, "python3 scripts/setup.py --dataset"),
     (
         "Calibration",
@@ -191,10 +248,14 @@ def run_check() -> int:
             f"Run: python3 scripts/setup.py --all"
         )
     else:
-        print(colour("Ready to run inference.", GREEN))
-        print("  ./.venv/bin/python scripts/run_inference.py --input-dir data/cifake_sample \\")
-        print("    --checkpoint models/pretrained/pytorch_model.pt --no-transformations \\")
-        print("    --output outputs/predictions.json")
+        print(colour("Ready. Start the demo with:", GREEN))
+        print("  ./.venv/bin/streamlit run app.py")
+        if SAMPLE_DIR.exists():
+            print("\nOr check the command line against the generated smoke-test images:")
+            relative = SAMPLE_DIR.relative_to(PROJECT_ROOT)
+            print(f"  ./.venv/bin/python scripts/run_inference.py --input-dir {relative} \\")
+            print("    --output outputs/predictions.json")
+            print(colour("  (those images only prove the pipeline runs; see their README)", DIM))
     print()
     return 0 if blocking == 0 else 1
 
@@ -231,11 +292,12 @@ def download_checkpoint(assume_yes: bool) -> bool:
     if ok:
         print(f"  checkpoint already present ({detail})")
         return True
-    if not assume_yes:
-        answer = input(f"  Download the model checkpoint ({human(CHECKPOINT_BYTES)})? [y/N] ")
-        if answer.strip().lower() not in ("y", "yes"):
-            print("  skipped.")
-            return False
+    if not assume_yes and not confirm(
+        f"  Download the model checkpoint ({human(CHECKPOINT_BYTES)})?"
+    ):
+        print("  skipped. The demo cannot run without it; fetch it later with:")
+        print("    python3 scripts/setup.py --checkpoint")
+        return False
 
     CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
     existing = CHECKPOINT.stat().st_size if CHECKPOINT.exists() else 0
@@ -282,11 +344,13 @@ def download_dataset(assume_yes: bool, shards: int) -> bool:
     if ok:
         print(f"  dataset already present ({detail})")
         return True
-    if not assume_yes:
-        answer = input(f"  Download {shards} SID_Set shard(s) (~{shards * 0.5:.1f} GB)? [y/N] ")
-        if answer.strip().lower() not in ("y", "yes"):
-            print("  skipped.")
-            return False
+    # Defaults to no: the dataset is optional and only needed to re-run the
+    # evaluation, so it should never be downloaded by an absent-minded Enter.
+    if not assume_yes and not confirm(
+        f"  Download {shards} SID_Set shard(s) (~{shards * 0.5:.1f} GB)?", default=False
+    ):
+        print("  skipped.")
+        return False
     result = subprocess.run(
         [
             str(VENV_PYTHON),
@@ -310,6 +374,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--all", action="store_true", help="Also download the evaluation dataset")
     parser.add_argument("--checkpoint", action="store_true", help="Only download the checkpoint")
     parser.add_argument("--dataset", action="store_true", help="Only download the dataset")
+    parser.add_argument(
+        "--sample", action="store_true", help="Only generate the smoke-test images"
+    )
     parser.add_argument("--shards", type=int, default=4, help="Dataset shards to fetch")
     parser.add_argument("--yes", "-y", action="store_true", help="Do not prompt")
     parser.add_argument("--skip-checkpoint", action="store_true", help="Set up code only")
@@ -320,8 +387,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print("\nSetting up: Robust Detection of AI-Generated Images\n" + "=" * 66)
 
-    if args.checkpoint or args.dataset:
+    if args.checkpoint or args.dataset or args.sample:
         if args.checkpoint and not download_checkpoint(args.yes):
+            return 1
+        if args.sample and not create_sample_images():
             return 1
         if args.dataset:
             if not VENV_PYTHON.exists():
@@ -331,22 +400,25 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         return run_check()
 
-    print("\n[1/4] Virtualenv")
+    print("\n[1/5] Virtualenv")
     if not create_venv():
         return 1
 
-    print("\n[2/4] Dependencies")
+    print("\n[2/5] Dependencies")
     if not install_dependencies():
         print(colour("  dependency installation failed", RED))
         return 1
 
-    print("\n[3/4] Model checkpoint")
+    print("\n[3/5] Model checkpoint")
     if args.skip_checkpoint:
         print("  skipped (--skip-checkpoint)")
     else:
         download_checkpoint(args.yes)
 
-    print("\n[4/4] Evaluation dataset")
+    print("\n[4/5] Smoke-test images")
+    create_sample_images()
+
+    print("\n[5/5] Evaluation dataset")
     if args.all:
         download_dataset(args.yes, args.shards)
     else:
